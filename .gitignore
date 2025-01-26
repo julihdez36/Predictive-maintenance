@@ -1,0 +1,5 @@
+.venv/
+.spyproject/
+__pycache__/
+*.pyc/
+.gitattributes
