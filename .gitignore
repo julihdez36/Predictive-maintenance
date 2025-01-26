@@ -2,4 +2,3 @@
 .spyproject/
 __pycache__/
 *.pyc/
-.gitattributes
