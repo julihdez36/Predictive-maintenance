@@ -1,4 +1,4 @@
-# Prueba con SMAC3
+# Prueba SMAC (Sequential Model-based Algorithm Configuration).
 
 import numpy as np
 from sklearn.datasets import make_classification
@@ -69,6 +69,8 @@ def run_bohb_with_smac():
 # 6. Generar datos y ejecutar
 X_train, X_val, y_train, y_val = generate_synthetic_data()
 best_config = run_bohb_with_smac()
+
+
 print("Mejores hiperparámetros encontrados:", best_config)
 
 
