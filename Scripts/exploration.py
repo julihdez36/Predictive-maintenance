@@ -1,4 +1,5 @@
-# Exploration
+#################################################################
+##### Exploration 
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -45,34 +46,109 @@ df.sample(3)
 df.to_csv('Data\df.csv', index=False)  # Guarda el DataFrame en un archivo CSV, sin incluir el índice
 
 
-# Visualización del los transformadores
+##################################################################
+# Exploración de variables 
 
-sns.set_theme(style="whitegrid")  # Cambia a 'darkgrid', 'white', 'dark', etc., según prefieras.
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df.csv'
+df = pd.read_csv(url)
 
-# Crear el gráfico
-plt.figure(figsize=(8, 6))  # Ajustar el tamaño de la figura
-ax = sns.countplot(data=df, x='burned_transformers', hue = 'burned_transformers')  # Cambia la paleta según el estilo deseado
+df.sample(2)
+df.columns
 
-# Etiquetas en el eje x e y
-ax.set_xlabel('Transformadores Quemados', fontsize=14, labelpad=10)
-ax.set_ylabel('Cantidad', fontsize=14, labelpad=10)
+##################################################################
+# Variables dependientes
 
-# Título
-ax.set_title('Distribución de Transformadores Quemados', fontsize=16, fontweight='bold', pad=20)
+df.burned_transformers.value_counts()
 
-# Añadir etiquetas de conteo sobre las barras
+df['burning_rate'].describe()
+##################################################################
+
+# Visualizaciones de interés
+
+# Configuración del estilo para gráficos IEEE
+plt.rcParams.update({
+    "text.usetex": True,  # Usar LaTeX para renderizar texto
+    "font.family": "serif",  # Usar una fuente serif (como Times New Roman)
+    "font.serif": ["Times New Roman"],  # Especificar Times New Roman
+    "font.size": 10,  # Tamaño de la fuente
+    "axes.titlesize": 10,  # Tamaño del título de los ejes
+    "axes.labelsize": 10,  # Tamaño de las etiquetas de los ejes
+    "xtick.labelsize": 8,  # Tamaño de las etiquetas del eje X
+    "ytick.labelsize": 8,  # Tamaño de las etiquetas del eje Y
+    "legend.fontsize": 8,  # Tamaño de la leyenda
+    "figure.titlesize": 10,  # Tamaño del título de la figura
+    "lines.linewidth": 1.5,  # Grosor de las líneas
+    "lines.markersize": 6,  # Tamaño de los marcadores
+    "grid.color": "gray",  # Color de la cuadrícula
+    "grid.linestyle": ":",  # Estilo de la cuadrícula
+    "grid.linewidth": 0.5,  # Grosor de la cuadrícula
+})
+
+# Fallos de trasnformadores por area (0:rural, 1: urbana)
+
+df.burned_transformers.sum() # 1436 fallos totales
+
+
+
+###############################################
+# Cantidad de Transformadores Quemados por Zona
+
+tabla_fallas = df.groupby('location')['burned_transformers'].sum()     
+# 1384 en zona rural, 52 en zonas urbanas
+plt.figure(figsize=(8, 6))  # Ajustar tamaño
+ax = sns.barplot(
+    x=tabla_fallas.index, 
+    y=tabla_fallas.values, 
+    palette="Set2", 
+    edgecolor="black",
+    linewidth=0.5
+)
+
+plt.title("Cantidad de Transformadores Quemados por Zona", fontsize=12, fontweight="bold")
+plt.xlabel("Zona", fontsize=10)
+plt.ylabel("Transformadores Quemados", fontsize=10)
+
 for container in ax.containers:
-    ax.bar_label(container, fmt='%d', label_type='edge', fontsize=12, padding=3)
+    ax.bar_label(container, fmt='%d', label_type='edge', fontsize=8)
 
-# Ajustar las etiquetas del eje x si son muy largas
-plt.xticks(fontsize=12)
-plt.yticks(fontsize=12)
+ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7)
 
-# Ajustar espacio del gráfico para que el título no quede pegado
 plt.tight_layout()
 
-# Mostrar el gráfico
 plt.show()
+
+
+
+# Guardar la figura en formato adecuado para IEEE
+plt.savefig('transformadores_quemados.eps', format='eps', bbox_inches='tight', dpi=300)
+
+###################################################################
+# Variables que considero omitir
+
+
+df.criticality_ceramics # Criticalidad por estudios previos
+df.eens_kwh # riesgo que implica cesar la prestación del servicio
+
+
+###################################################################
+
+# Variables a ajustar
+
+df.client_type.value_counts() # Ajustar: hogars y empresas
+
+# Tipo de instalación
+# Podemos explorar una combinación one-hot para variables categóricas
+
+df.installation_type.value_counts() # Pensar cómo ajustar
+
+
+###################################################################
+
+# Variable dependiente del modelo
+# Problema de clasificación binario
+
+df['burned_transformers'].value_counts()
+
 
 
 
