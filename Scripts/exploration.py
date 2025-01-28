@@ -84,13 +84,41 @@ plt.rcParams.update({
     "grid.linewidth": 0.5,  # Grosor de la cuadrícula
 })
 
-# Fallos de trasnformadores por area (0:rural, 1: urbana)
 
-df.burned_transformers.sum() # 1436 fallos totales
+# Trasnformadores quemados por año
+
+plt.figure(figsize=(8, 6)) 
+ax = sns.countplot(
+    data= df,
+    x= 'year', 
+    hue= 'burned_transformers',  
+    palette="Greys", 
+    edgecolor="black",
+    linewidth=0.5
+)
+
+# Modificar el título y etiquetas
+plt.title("Cantidad de Transformadores Quemados por año", fontsize=12, fontweight="bold")
+plt.xlabel("Año", fontsize=10)
+plt.ylabel("Transformadores Quemados", fontsize=10)
+
+for container in ax.containers:
+    ax.bar_label(container, fmt='%d', label_type='edge', fontsize=8)
+
+handles, labels = ax.get_legend_handles_labels()
+new_labels = ['No fallo', 'Fallo']  # Nuevas etiquetas para la leyenda
+ax.legend(handles, new_labels, title="Estado del Transformador")
+
+ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7)
+
+plt.tight_layout()
+plt.show()
+
+plt.savefig('fallos_año.eps', format='eps', bbox_inches='tight', dpi=300)
+
+df.burned_transformers.value_counts()
 
 
-
-###############################################
 # Cantidad de Transformadores Quemados por Zona
 
 tabla_fallas = df.groupby('location')['burned_transformers'].sum()     
@@ -117,10 +145,8 @@ plt.tight_layout()
 
 plt.show()
 
-
-
-# Guardar la figura en formato adecuado para IEEE
-plt.savefig('transformadores_quemados.eps', format='eps', bbox_inches='tight', dpi=300)
+# Saving .eps
+# plt.savefig('transformadores_quemados.eps', format='eps', bbox_inches='tight', dpi=300)
 
 ###################################################################
 # Variables que considero omitir
@@ -129,17 +155,47 @@ plt.savefig('transformadores_quemados.eps', format='eps', bbox_inches='tight', d
 df.criticality_ceramics # Criticalidad por estudios previos
 df.eens_kwh # riesgo que implica cesar la prestación del servicio
 
+df_final = df.drop(columns = ['criticality_ceramics','eens_kwh'])
+df_final.columns
 
 ###################################################################
 
 # Variables a ajustar
 
-df.client_type.value_counts() # Ajustar: hogars y empresas
+# Diferenciaremos hogares, comercios, industria y oficial
+
+df_final['client_type'] = df['client_type'].apply(
+    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
+)
+
+# One-hot encoding 
+df_final = pd.get_dummies(df_final, columns=['client_type'])
+
+df_final.columns
 
 # Tipo de instalación
 # Podemos explorar una combinación one-hot para variables categóricas
 
-df.installation_type.value_counts() # Pensar cómo ajustar
+df_final.installation_type.value_counts()
+
+
+df_final['installation_type'] = df['installation_type'].replace({
+    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
+})
+
+# Agrupar categorías poco frecuentes en "OTROS"
+
+
+df_final['installation_type'] = df_final['installation_type'].replace({
+    'CABINA': 'OTROS',
+    'TORRE METALICA': 'OTROS',
+    'PAD MOUNTED': 'OTROS'
+})
+
+
+# Aplicar One-Hot Encoding
+
+df_final = pd.get_dummies(df_final, columns=['installation_type'], prefix='installation')
 
 
 ###################################################################
@@ -148,6 +204,24 @@ df.installation_type.value_counts() # Pensar cómo ajustar
 # Problema de clasificación binario
 
 df['burned_transformers'].value_counts()
+
+
+
+df_final.to_csv('Data\df_entrenamiento.csv', index=False)  
+
+
+
+###################################################################
+
+from imblearn.combine import SMOTETomek, SMOTEENN
+from collections import Counter
+
+# Aplicar SMOTE + Tomek Links
+smote_tomek = SMOTETomek(sampling_strategy='auto', random_state=42)
+X_resampled, y_resampled = smote_tomek.fit_resample(X, y)
+
+# Verificar la nueva distribución de clases
+print("Distribución de clases después de SMOTE + Tomek Links:", Counter(y_resampled))
 
 
 
