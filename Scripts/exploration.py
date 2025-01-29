@@ -198,30 +198,25 @@ df_final['installation_type'] = df_final['installation_type'].replace({
 df_final = pd.get_dummies(df_final, columns=['installation_type'], prefix='installation')
 
 
+# Tipado del modelo
+
+df_final.info()
+
+
+df_final['network_km_lt'] = df_final['network_km_lt'].str.replace(',', '').astype(float)
+
+
 ###################################################################
 
 # Variable dependiente del modelo
 # Problema de clasificación binario
 
-df['burned_transformers'].value_counts()
+df_final['burned_transformers'].value_counts()
 
 
 
 df_final.to_csv('Data\df_entrenamiento.csv', index=False)  
 
-
-
-###################################################################
-
-from imblearn.combine import SMOTETomek, SMOTEENN
-from collections import Counter
-
-# Aplicar SMOTE + Tomek Links
-smote_tomek = SMOTETomek(sampling_strategy='auto', random_state=42)
-X_resampled, y_resampled = smote_tomek.fit_resample(X, y)
-
-# Verificar la nueva distribución de clases
-print("Distribución de clases después de SMOTE + Tomek Links:", Counter(y_resampled))
 
 
 

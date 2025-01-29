@@ -4,8 +4,12 @@
 
 # Importación del conjunto de datos
 
-#url =
-#df_final = 
+import pandas as pd
+
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento.csv'
+df_final = pd.read_csv(url)
+
+df_final.info()
 
 
 # división y balanceo de datos
@@ -33,3 +37,5 @@ X_resampled, y_resampled = smote_tomek.fit_resample(X, y)
 # Verificar la nueva distribución de clases
 print("Distribución de clases después de SMOTE + Tomek Links:", Counter(y_resampled))
 
+X_resampled.shape
+y_resampled.shape
