@@ -1,104 +1,88 @@
 # Prueba BOHB (Bayesian Optimization and Hyperband)
 
-# Creación de datos sintéticos para clasificación binaria
-
-
+import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.optimizers import Adam
+from ConfigSpace import ConfigurationSpace, UniformFloatHyperparameter, UniformIntegerHyperparameter, CategoricalHyperparameter
+from smac import HyperparameterOptimizationFacade, Scenario
+from smac import Hyperband  # Importar Hyperband para BOHB-like
 
-# Construimos un conjunto de datos de dimensión (500,10) como prueba
+# 1. Generar datos sintéticos (igual que antes)
+def generate_synthetic_data():
+    X, y = make_classification(n_samples=1000, n_features=20, n_informative=15, n_classes=2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    return X_train, X_val, y_train, y_val
 
-X, y = make_classification(
-    n_samples=500,   # Número de filas
-    n_features=10,   # Número de características
-    n_informative=8, # Características relevantes
-    n_redundant=2,   # Características redundantes
-    random_state=42
-)
-
-# Dividimos el conjunto de datos en en entrenamiento y prueba
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-X_train[:5], y_train[:5]
-
-# Configuración BOHB para prueba rápida
-
-from ray import tune
-from ray.tune.schedulers import HyperBandForBOHB
-from ray.tune.search.bohb import TuneBOHB
-from ray.tune.integration.keras import TuneReportCallback
-import tensorflow as tf
-
-# Definir espacio de búsqueda reducido
-search_space = {
-    "num_layers": tune.randint(1, 4),  # Número de capas entre 1 y 3
-    "units_per_layer": tune.qrandint(5, 15,q = 1),  # Número de neruonas por capa en rango 1-15
-    "learning_rate": tune.loguniform(1e-3, 1e-2),  # Tasa de aprendizaje más restringida
-    "batch_size": tune.choice([16, 32]),  # Número de muestras utilizadas en cada paso de entrenamiento.
-    "dropout": tune.uniform(0.1, 0.3),  # Fracción de neuronas que se desactivan aleatoriamente
-    # durante el entrenamiento para evitar el sobreajuste.10%-30%
-    "activation": tune.choice(["relu", "sigmoid"])  # Probamos sólo dos funciones de activación
-}
-
-
-# Creamos una fucnión dinámica para modelar con keras la red con los múltiples parámetros
-
-def build_model(config):
-    model = tf.keras.Sequential()
-    for _ in range(config["num_layers"]):
-        model.add(tf.keras.layers.Dense(config["units_per_layer"], activation=config["activation"]))
-        model.add(tf.keras.layers.Dropout(config["dropout"]))
-    model.add(tf.keras.layers.Dense(1, activation="sigmoid"))  # Para clasificación binaria
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=config["learning_rate"]),
-        loss="binary_crossentropy",
-        metrics=["accuracy"]
-    )
+# 2. Definir el modelo (igual que antes)
+def create_model(learning_rate, num_units, num_layers, activation):
+    model = Sequential()
+    model.add(Dense(num_units, input_dim=20, activation=activation))
+    for _ in range(num_layers - 1):
+        model.add(Dense(num_units, activation=activation))
+    model.add(Dense(1, activation='sigmoid'))
+    optimizer = Adam(learning_rate=learning_rate)
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
     return model
 
-#
+# 3. Función objetivo adaptada para SMAC3 + Hyperband
+def objective_function(config, seed, budget):
+    # Extraer hiperparámetros
+    learning_rate = config["learning_rate"]
+    num_units = config["num_units"]
+    num_layers = config["num_layers"]
+    activation = config["activation"]
 
-# Configuración del BOHB
-# combinamos  Bayesian Optimization con el algoritmo HyperBand para realizar 
-# la búsqueda de hiperparámetros de manera eficiente. 
-
-# Primero, utilizamos un modelo bayesiano para explorar el espacio de busqueda
-
-bohb_search = TuneBOHB() 
-
-# Usamos el algoritmo Hyperband que asgina recursos que priorizan
-# las configuraciones mas prometedoras basándose en su rendimiento inicial
-
-bohb_scheduler = HyperBandForBOHB(time_attr="training_iteration", max_t=10, reduction_factor=3)
-
-# Función de entrenamiento
-
-def train_model(config):
-    model = build_model(config)
-    model.fit(
+    # Crear y entrenar el modelo con el "budget" (épocas)
+    model = create_model(learning_rate, num_units, num_layers, activation)
+    history = model.fit(
         X_train, y_train,
-        validation_data=(X_test, y_test),
-        epochs=10,  # Reducido para prueba rápida
-        batch_size=config["batch_size"],
-        callbacks=[TuneReportCallback({"accuracy": "val_accuracy"})],
+        epochs=int(budget),  # Usar el budget proporcionado por SMAC3
+        batch_size=32,
+        validation_data=(X_val, y_val),
         verbose=0
     )
 
-# Iniciar la búsqueda de hiperparámetros
-analysis = tune.run(
-    train_model, # Función de entrenamiento (configurada anteriormente)
-    config=search_space, # Espacio de busqueda
-    search_alg=bohb_search, # Método de búsqueda de hiperparámetros (BOHB)
-    scheduler=bohb_scheduler, # Estrategia de asignación de recursos (HyperBand)
-    num_samples=10,  # Número de configuraciones a probar
-    metric="accuracy", # Métrica objetivo para optimizar
-    mode="max"    # Objetivo: Maximizar la métrica
-)
+    # Obtener la pérdida de validación
+    val_loss = history.history['val_loss'][-1]
+    return val_loss
 
-# Evaluar el mejor conjnuto de hiperparametros
+# 4. Espacio de búsqueda (igual que antes)
+def get_configspace():
+    cs = ConfigurationSpace()
+    cs.add_hyperparameter(UniformFloatHyperparameter('learning_rate', 1e-4, 1e-2, log=True))
+    cs.add_hyperparameter(UniformIntegerHyperparameter('num_units', 16, 128))
+    cs.add_hyperparameter(UniformIntegerHyperparameter('num_layers', 1, 4))
+    cs.add_hyperparameter(CategoricalHyperparameter('activation', ['relu', 'tanh']))
+    return cs
 
-print("Best config: ", analysis.get_best_config(metric="accuracy", mode="max"))
+# 5. Configurar y ejecutar BOHB con SMAC3
+def run_bohb_with_smac():
+    global X_train, X_val, y_train, y_val
+    X_train, X_val, y_train, y_val = generate_synthetic_data()
 
+    # Configurar el escenario con Hyperband
+    scenario = Scenario(
+        configspace=get_configspace(),
+        deterministic=True,
+        n_trials=50,  # Número total de evaluaciones
+        min_budget=1,  # Mínimo número de épocas
+        max_budget=20,  # Máximo número de épocas
+    )
 
+    # Usar HyperbandFacade para BOHB-like
+    smac = Hyperband(
+        scenario=scenario,
+        target_function=objective_function,
+        initial_design=Hyperband.DefaultConfiguration(initial_budget=1),  # Presupuesto inicial
+    )
 
+    incumbent = smac.optimize()
+    return incumbent
+
+# 6. Ejecutar
+if __name__ == "__main__":
+    best_config = run_bohb_with_smac()
+    print("Mejores hiperparámetros encontrados:", best_config)
