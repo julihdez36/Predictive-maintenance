@@ -258,4 +258,38 @@ y_resampled.to_csv('Data\y_resampled.shape.csv', index=False)
 
 
 
+import pandas as pd
+from imblearn.combine import SMOTETomek
+from collections import Counter
+from sklearn.model_selection import train_test_split
+
+df_final = pd.read_csv('Data/df_entrenamiento.csv')
+
+# Separar características (X) y etiqueta (y)
+X = df_final.drop(columns=['burned_transformers'])  
+y = df_final['burned_transformers']
+
+# Verificar el desbalance de clases
+print("Distribución de clases antes del remuestreo:", Counter(y))
+
+# Dividir en conjunto de entrenamiento y prueba antes del balanceo
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Aplicar SMOTE + Tomek Links solo en el conjunto de entrenamiento
+smote_tomek = SMOTETomek(sampling_strategy=.5, random_state=42)
+X_resampled, y_resampled = smote_tomek.fit_resample(X_train, y_train)
+
+# Verificar la nueva distribución de clases
+print("Distribución de clases después de SMOTE + Tomek Links:", Counter(y_resampled))
+
+# Guardar los datos balanceados
+X_resampled.to_csv('Data/X_resampled.csv', index=False)
+y_resampled.to_csv('Data/y_resampled.csv', index=False)
+
+X_test.to_csv('Data/X_test.csv', index=False)
+y_test.to_csv('Data/y_test.csv', index=False)
+
+
+
+
 
