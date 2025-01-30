@@ -224,40 +224,6 @@ df_final.to_csv('Data\df_entrenamiento.csv', index=False)
 # SMOTE (sobremuestreo de la clase minoritaria)
 # Tomek Links (submuestreo de la clase mayoritaria)
 
-
-from imblearn.combine import SMOTETomek, SMOTEENN
-from collections import Counter
-from sklearn.model_selection import train_test_split
-
-df_final = pd.read_csv('Data\df_entrenamiento.csv')
-
-
-# Separar características (X) y etiqueta (y)
-X = df_final.drop(columns=['burned_transformers'])  # Ajusta el nombre de la columna si es necesario
-y = df_final['burned_transformers']
-
-# Verificar el desbalance de clases
-print("Distribución de clases antes del remuestreo:", Counter(y))
-
-
-# Aplicar SMOTE + Tomek Links
-
-# Demenos ajustas esto porque me está produciendo mas datos de los reales
-smote_tomek = SMOTETomek(sampling_strategy='auto', random_state=42)
-X_resampled, y_resampled = smote_tomek.fit_resample(X, y)
-
-# Verificar la nueva distribución de clases
-print("Distribución de clases después de SMOTE + Tomek Links:", Counter(y_resampled))
-
-X_resampled.shape
-y_resampled.shape
-
-
-X_resampled.to_csv('Data\X_resampled.csv', index=False)  
-y_resampled.to_csv('Data\y_resampled.shape.csv', index=False)  
-
-
-
 import pandas as pd
 from imblearn.combine import SMOTETomek
 from collections import Counter
