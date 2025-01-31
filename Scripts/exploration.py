@@ -26,7 +26,7 @@ df19.columns, df20.columns = new_names, new_names
 df19['year'] = 2019
 df20['year']= 2020
 
-print(f'Dimesión de los df: {df19.shape, df20.shape}')
+print(f'Dimesión de los df: {df19.shape, df20.shape}') #((15873, 17), (15873, 17))
 
 df19.info()
 
@@ -37,7 +37,7 @@ print(df19.burned_transformers.value_counts())
 print(df20.burned_transformers.value_counts())
 
 df = pd.concat([df19,df20], ignore_index= True)
-print(df.shape)
+print(df.shape) # (31746, 17)
 df.sample(3)
 
 

@@ -1,4 +1,51 @@
 
+
+####################################################################
+
+# división y balanceo de datos
+
+# SMOTE (sobremuestreo de la clase minoritaria)
+# Tomek Links (submuestreo de la clase mayoritaria)
+
+
+import pandas as pd
+from imblearn.combine import SMOTETomek
+from collections import Counter
+from sklearn.model_selection import train_test_split
+
+# Cargar datos
+df_final = pd.read_csv('Data/df_entrenamiento.csv')
+X = df_final.drop(columns=['burned_transformers'])  
+y = df_final['burned_transformers']
+
+# 1. Dividir en entrenamiento (80%) y prueba (20%) - estratificado
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, 
+    test_size=0.2, 
+    random_state=42, 
+    stratify=y  # Mantener proporción original en train y test
+)
+
+# 2. Dividir el entrenamiento en subtrain (80%) y validación (20%) - estratificado
+X_subtrain, X_val, y_subtrain, y_val = train_test_split(
+    X_train, y_train, 
+    test_size=0.2, 
+    random_state=42, 
+    stratify=y_train  # Mantener proporción original en subtrain y val
+)
+
+# 3. Aplicar SMOTE + Tomek solo al subtrain (no a validación o prueba)
+smote_tomek = SMOTETomek(sampling_strategy=0.5, random_state=42)
+X_resampled, y_resampled = smote_tomek.fit_resample(X_subtrain, y_subtrain)
+
+# Verificar distribuciones
+print("Distribución original (y):", Counter(y))
+print("Distribución subtrain antes de SMOTE:", Counter(y_subtrain))
+print("Distribución subtrain después de SMOTE:", Counter(y_resampled))
+print("Distribución validación:", Counter(y_val))  # Debe mantener proporción original
+print("Distribución prueba:", Counter(y_test))     # Debe mantener proporción original
+
+
 ## Definición de hiperparámetros
 
 # 0. Librerías
@@ -25,30 +72,30 @@ np.random.seed(42)
 # 1. Carga de datos y ajuste
 
 X_url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/X_resampled.csv'
-y_url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/y_resampled.shape.csv'
+y_url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/y_resampled.csv'
 
-X = pd.read_csv(X_url)
-y = pd.read_csv(y_url)
+X_train = pd.read_csv(X_url)
+y_train = pd.read_csv(y_url)
+
+# Conversión en array y normalización de X
+
+y_train = y_train.values.ravel()
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
 
 
-def load_data():
-    global X_train, X_val, y_train, y_val
-    
-    # Cargar datos desde los CSVs
-    X = pd.read_csv(X_url)
-    y = pd.read_csv(y_url)
+# Dividir el conjunto balanceado en entrenamiento y validación
+X_train_new, X_val, y_train_new, y_val = train_test_split(
+    X_train, 
+    y_train, 
+    test_size=0.2,  # 20% para validación
+    random_state=42,
+    stratify=y_train  # Mantener proporción de clases
+)
 
-    # Si `y` es un DataFrame con una sola columna, convertir a array
-    y = y.values.ravel()
 
-    # Normalizar X para mejorar la convergencia del modelo
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
-
-    # Dividir en entrenamiento y validación
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# 2. Definir la creación del modelo
+# 2. Definición del modelo
 def create_model(config):
     model = Sequential()
     num_layers = config["num_layers"]
@@ -56,12 +103,12 @@ def create_model(config):
     # Primera capa
     model.add(Dense(
         units=config["units_1"],
-        input_dim=X_train.shape[1],  # Asegurar que use la dimensión correcta
+        input_dim=X_train.shape[1],
         activation=config["activation_1"]
     ))
     model.add(Dropout(config["dropout"]))
 
-    # Capas ocultas
+    # Capas ocultas (si num_layers > 1)
     for i in range(2, num_layers + 1):
         model.add(Dense(
             units=config[f"units_{i}"],
@@ -76,10 +123,8 @@ def create_model(config):
     model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
     return model
 
-# 3. Función objetivo para optimización
+# 3. Función objetivo para SMAC
 def objective_function(config, instance, seed, budget):
-    global X_train, X_val, y_train, y_val
-
     model = create_model(config)
     history = model.fit(
         X_train, y_train,
@@ -88,34 +133,35 @@ def objective_function(config, instance, seed, budget):
         validation_data=(X_val, y_val),
         verbose=0
     )
-    return history.history['val_loss'][-1]  # Optimizar con la pérdida de validación
+    return history.history['val_loss'][-1]
 
-# 4. Espacio de búsqueda optimizado
+# 4. Espacio de búsqueda de hiperparámetros
 def get_configspace():
     cs = ConfigurationSpace()
     max_layers = 6
 
+    # Hiperparámetros base
     learning_rate = UniformFloatHyperparameter('learning_rate', 1e-5, 1e-2, log=True)
     num_layers = UniformIntegerHyperparameter('num_layers', 1, max_layers)
     dropout = UniformFloatHyperparameter('dropout', 0.1, 0.5)
     batch_size = UniformIntegerHyperparameter('batch_size', 32, 256, log=True)
     cs.add_hyperparameters([learning_rate, num_layers, dropout, batch_size])
 
+    # Hiperparámetros por capa
     for i in range(1, max_layers + 1):
         units = UniformIntegerHyperparameter(f"units_{i}", 20, 100, log=True)
         activation = CategoricalHyperparameter(f"activation_{i}", ['relu', 'tanh', 'swish'])
         cs.add_hyperparameters([units, activation])
 
+        # Condiciones para capas superiores
         if i > 1:
             cs.add_condition(GreaterThanCondition(units, num_layers, i - 1))
             cs.add_condition(GreaterThanCondition(activation, num_layers, i - 1))
 
     return cs
 
-# 5. Ejecutar optimización con SMAC
+# 5. Configuración y ejecución de SMAC
 def run_bohb_with_smac():
-    load_data()
-
     scenario = Scenario(
         configspace=get_configspace(),
         deterministic=True,
@@ -132,7 +178,7 @@ def run_bohb_with_smac():
 
     return smac.optimize()
 
-# 6. Ejecutar optimización
+# 6. Ejecutar la optimización
 if __name__ == "__main__":
     best_config = run_bohb_with_smac()
     print("\nMejor configuración encontrada:")
