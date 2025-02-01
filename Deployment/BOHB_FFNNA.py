@@ -20,7 +20,8 @@ tf.random.set_seed(42)
 np.random.seed(42)
 
 # Carga de datos
-df_final = pd.read_csv('Data/df_entrenamiento.csv')
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento.csv'
+df_final = pd.read_csv(url)
 
 X = df_final.drop(columns=['burned_transformers'])  
 y = df_final['burned_transformers']
@@ -197,7 +198,6 @@ with open('mejores_hiperparametros.json', 'w') as f:
     json.dump(best_config_dict, f, indent=4)
 joblib.dump(scaler_final, 'scaler_entrenado.pkl')
 
-# Gráfico
 # plot_model(
 #     final_model,
 #     to_file='model_plot.png',
