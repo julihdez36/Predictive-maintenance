@@ -17,6 +17,7 @@ from sklearn.metrics import (
 )
 import tensorflow.keras.backend as K
 from tensorflow.keras.regularizers import l1, l2
+import tensorflow_addons as tfa
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
@@ -39,8 +40,8 @@ from imblearn.combine import SMOTETomek
 tf.random.set_seed(42)
 np.random.seed(42)
 # Configurar paralelismo de TensorFlow
-tf.config.threading.set_inter_op_parallelism_threads(10)
-tf.config.threading.set_intra_op_parallelism_threads(10)
+tf.config.threading.set_inter_op_parallelism_threads(4)
+tf.config.threading.set_intra_op_parallelism_threads(4)
 
 # --------------------------------------------
 # 2. Carga y Preparación de Datos
@@ -70,7 +71,7 @@ def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None, scaler=None):
     - X_val_raw: Datos de validación (no se balancean ni se usan en el fit del scaler)
     - scaler: Si se proporciona, se usa para transformar. Si no, se crea uno nuevo.
     """
-    # 1. Ajustar scaler SOLO a datos originales (no balanceados)
+    # 1. Ajustar scaler sobre datos originales
     if scaler is None:
         scaler = RobustScaler()
         scaler.fit(X_train_raw)  # Fit solo en datos originales
@@ -80,117 +81,90 @@ def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None, scaler=None):
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_raw, y_train_raw)
     
     # 3. Transformar datos balanceados con scaler ya ajustado
-    X_train_scaled = scaler.transform(X_train_bal)  # Usa scaler entrenado en X_train_raw
+    X_train_scaled = scaler.transform(X_train_bal)  
     
-    # 4. Escalar validación (si existe) con el mismo scaler
+    # 4. Escalar validación (condicional de existencia) con el mismo scaler
     X_val_scaled = scaler.transform(X_val_raw) if X_val_raw is not None else None
     
     return X_train_scaled, y_train_bal, X_val_scaled, scaler
+
 
 # --------------------------------------------
 # 4. Arquitectura de la Red Neuronal
 # --------------------------------------------
 
-
 def focal_loss(alpha=0.25, gamma=2.0):
-    """Implementación de Focal Loss para clasificación binaria."""
     def loss(y_true, y_pred):
         y_true = K.cast(y_true, K.floatx())
+        epsilon = K.epsilon()
+        y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)  # Evitar log(0)
         bce = K.binary_crossentropy(y_true, y_pred)
         p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
-        loss = alpha * K.pow((1 - p_t), gamma) * bce
-        return K.mean(loss)
+        return K.mean(alpha * K.pow(1 - p_t, gamma) * bce)
     return loss
 
-
 def create_model(best_config, input_dim):
-    """
-    Crea y devuelve un modelo utilizando los mejores hiperparámetros.
-    """
     model = tf.keras.Sequential()
-    
     num_layers = best_config['num_layers']
-    
+
     for i in range(num_layers):
         units = best_config[f"units_{i+1}"]
         activation = best_config[f"activation_{i+1}"]
-        
-        # Regularización L1 y L2
-        l1 = best_config['l1'] if best_config['use_l1'] else 0.0
-        l2 = best_config['l2'] if best_config['use_l2'] else 0.0
-        regularizer = tf.keras.regularizers.l1_l2(l1=l1, l2=l2)
-        
-        # Capa densa con regularización
+        l1_val = best_config['l1'] if best_config['use_l1'] else 0.0
+        l2_val = best_config['l2'] if best_config['use_l2'] else 0.0
+        regularizer = tf.keras.regularizers.l1_l2(l1=l1_val, l2=l2_val)
+
         if i == 0:
-            model.add(tf.keras.layers.Dense(units, activation=activation, input_dim=input_dim, kernel_regularizer=regularizer))
+            model.add(tf.keras.layers.Dense(units, kernel_regularizer=regularizer, input_shape=(input_dim,)))
         else:
-            model.add(tf.keras.layers.Dense(units, activation=activation, kernel_regularizer=regularizer))
-        
-        # Dropout
-        dropout = best_config['dropout']
-        model.add(tf.keras.layers.Dropout(dropout))
-    
-    # Capa de salida
+            model.add(tf.keras.layers.Dense(units, kernel_regularizer=regularizer))
+
+        model.add(tf.keras.layers.BatchNormalization())
+        model.add(tf.keras.layers.Activation(activation))
+        model.add(tf.keras.layers.Dropout(best_config['dropout']))
+
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
-    # Elección del optimizador
-    optimizer_choice = best_config['optimizer']
-    if optimizer_choice == 'adam':
-        optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
-    elif optimizer_choice == 'rmsprop':
-        optimizer = tf.keras.optimizers.RMSprop(learning_rate=best_config['learning_rate'])
-    elif optimizer_choice == 'sgd':
-        optimizer = tf.keras.optimizers.SGD(learning_rate=best_config['learning_rate'])
+    optimizers = {
+        'adam': tf.keras.optimizers.Adam(best_config['learning_rate']),
+        'adamw': tf.keras.optimizers.AdamW(best_config['learning_rate']),
+        'rmsprop': tf.keras.optimizers.RMSprop(best_config['learning_rate']),
+        'sgd': tf.keras.optimizers.SGD(best_config['learning_rate'])
+    }
 
-    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    optimizer = optimizers.get(best_config['optimizer'], tf.keras.optimizers.Adam(best_config['learning_rate']))
     
+    model.compile(
+        optimizer=optimizer,
+        loss=focal_loss(),
+        metrics=[tf.keras.metrics.AUC(curve='PR'), tfa.metrics.F1Score(num_classes=1, threshold=0.5)]
+    )
     return model
-
-
-
 
 # --------------------------------------------
 # 5. Función Objetivo para SMAC (Corregida)
 # --------------------------------------------
 
 def find_best_threshold(y_true, y_pred):
-    """Encuentra el umbral óptimo que maximiza el F1-score basado en la curva Precision-Recall."""
     precision, recall, thresholds = precision_recall_curve(y_true, y_pred)
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)  # Evita divisiones por 0
-    best_threshold = thresholds[np.nanargmax(f1_scores)]
+    best_threshold = thresholds[np.argmax(f1_scores)]  # np.argmax evita problemas con NaN
     return best_threshold
 
 def objective_function(config, seed, budget):
-    """
-    Función objetivo modificada:
-    - Balanceo y escalado DENTRO de cada fold.
-    - Validación con datos originales (no balanceados).
-    - Métricas: AUC-PR y F1-score.
-    """
     kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    auc_pr_scores = []
-    f1_scores = []
-    
-    # Para guardar las métricas de cada fold
-    auc_pr_train_all_folds = []
-    auc_pr_val_all_folds = []
-    f1_train_all_folds = []
-    f1_val_all_folds = []
-    thresholds_all_folds = []  # Lista para guardar los umbrales óptimos
+    auc_pr_scores, f1_scores, thresholds_all_folds = [], [], []
 
     for train_idx, val_idx in kfold.split(X_train_full, y_train_full):
-        # Datos originales sin balancear
         X_train_raw, y_train_raw = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx]
         X_val_raw, y_val_raw = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx]
-        
-        # Preprocesar SOLO el conjunto de entrenamiento del fold
-        X_train_scaled, y_train_bal, X_val_scaled, _ = preprocesar_datos(
-            X_train_raw, y_train_raw, X_val_raw
-        )
 
-        # Entrenar modelo
-        model = create_model(config)
-        class_weight = {0: 1.0, 1: 30310/1436}
+        X_train_scaled, y_train_bal, X_val_scaled, _ = preprocesar_datos(X_train_raw, y_train_raw, X_val_raw)
+
+        model = create_model(config, input_dim=X_train_scaled.shape[1])
+        
+        class_weight = {0: len(y_train_bal) / (2 * sum(y_train_bal == 0)),
+                        1: len(y_train_bal) / (2 * sum(y_train_bal == 1))}  # Corrección del class_weight dinámico
         
         history = model.fit(
             X_train_scaled, y_train_bal,
@@ -199,54 +173,17 @@ def objective_function(config, seed, budget):
             batch_size=config["batch_size"],
             verbose=0,
             class_weight=class_weight,
-            callbacks=[tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss', patience=5, restore_best_weights=True, mode='min'
-            )]
+            callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
         )
-       
-        # Extraer métricas de AUC-PR y F1 desde el history
-        auc_pr_train_all_folds.append(history.history['auc'])
-        auc_pr_val_all_folds.append(history.history['val_auc'])
 
-        f1_train_all_folds.append(history.history['f1'])
-        f1_val_all_folds.append(history.history['val_f1'])
-
-        # Predicciones
         y_val_pred = model.predict(X_val_scaled, verbose=0).ravel()
-
-        # AUC-PR
         auc_pr = average_precision_score(y_val_raw, y_val_pred)
         auc_pr_scores.append(auc_pr)
 
-        # Calcular el umbral óptimo y F1-score
         best_threshold = find_best_threshold(y_val_raw, y_val_pred)
-        thresholds_all_folds.append(best_threshold)  # Guardar el umbral óptimo
-        y_val_binary = (y_val_pred >= best_threshold).astype(int)
-        f1 = f1_score(y_val_raw, y_val_binary)
-        f1_scores.append(f1)
+        thresholds_all_folds.append(best_threshold)
 
-    # Promedio de las métricas
-    return (
-        (1 - np.mean(auc_pr_scores)) + (1 - np.mean(f1_scores)) / 2,  # ← Métrica de optimización
-        thresholds_all_folds,  # ← Umbrales óptimos
-        auc_pr_train_all_folds,
-        auc_pr_val_all_folds,
-        f1_train_all_folds,
-        f1_val_all_folds)
-
-
-def obtener_umbral_optimo(thresholds_all_folds, y_val_raw, y_val_pred):
-    """
-    Devuelve el umbral óptimo promedio o el mejor umbral basado en el rendimiento en los folds.
-    """
-    # Usar el umbral promedio de los diferentes folds
-    best_threshold_avg = np.mean(thresholds_all_folds)
-
-    # O, alternativamente, buscar el umbral que maximiza el F1-score globalmente
-    #best_threshold = find_best_threshold(y_val_raw, y_val_pred)
-    
-    return best_threshold_avg  # O retornar `best_threshold` si prefieres uno específico
-
+    return {"auc_pr": np.mean(auc_pr_scores), "threshold": np.mean(thresholds_all_folds)}
 
 
 # --------------------------------------------
@@ -291,7 +228,7 @@ def get_configspace():
         if i > 1:
             cs.add_condition(GreaterThanCondition(units, num_layers, i - 1))
             cs.add_condition(GreaterThanCondition(activation, num_layers, i - 1))
-
+    
     return cs
 
 
@@ -362,12 +299,19 @@ def entrenar_modelo_final(best_config, X_train_full, y_train_full):
 # --------------------------------------------
 # 9. Evaluación
 # --------------------------------------------
-def evaluar_modelo(model, X_test_final, y_test, thresholds_all_folds):
-    """Evalúa el modelo en los datos de prueba y genera métricas clave."""
+def evaluar_modelo(model, X_test_final, y_test, threshold_promedio):
+    """Evalúa el modelo en los datos de prueba y genera métricas clave.
+    
+    Args:
+        model: El modelo entrenado.
+        X_test_final: Los datos de prueba.
+        y_test: Las etiquetas reales de prueba.
+        threshold_promedio: El umbral promedio calculado durante la optimización (de los pliegues).
+    """
     y_pred_prob = model.predict(X_test_final)
 
-    # Obtener el umbral óptimo (promedio de los folds)
-    threshold = obtener_umbral_optimo(thresholds_all_folds, y_test, y_pred_prob)
+    # Usar el umbral promedio (calculado previamente)
+    threshold = threshold_promedio  # Umbral ya calculado y pasado como argumento
 
     # AUC-PR y AUC-ROC
     auc_pr = average_precision_score(y_test, y_pred_prob)
@@ -388,6 +332,7 @@ def evaluar_modelo(model, X_test_final, y_test, thresholds_all_folds):
     PrecisionRecallDisplay.from_predictions(y_test, y_pred_prob)
     plt.title(f'Curva Precision-Recall (AUC-PR = {auc_pr:.2f})')
     plt.show()
+
 
 
 def plot_metrics(auc_pr_train, auc_pr_val, f1_train, f1_val):
@@ -446,6 +391,12 @@ final_model.fit(
     callbacks=[early_stop_final]
 )
 
+# Deberías haber calculado el promedio de los umbrales en el paso anterior de la optimización.
+# La salida de la función objetivo tiene 'threshold' como el promedio de los umbrales de todos los pliegues
+threshold_promedio = best_config['threshold']
+
+# Llamada a la función de evaluación
+evaluar_modelo(final_model, X_test_final, y_test, threshold_promedio)
 
 # --------------------------------------------
 # 10. Guardado de modelo
