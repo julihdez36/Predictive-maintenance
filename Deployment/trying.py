@@ -217,7 +217,13 @@ def objective_function(config, seed, budget):
         f1_scores.append(f1)
 
     # Promedio de las métricas
-    return (1 - np.mean(auc_pr_scores)) + (1 - np.mean(f1_scores)) / 2  # Penalización balanceada
+    return (
+        (1 - np.mean(auc_pr_scores)) + (1 - np.mean(f1_scores)) / 2,  # ← Métrica de optimización
+        thresholds_all_folds,  # ← Umbrales óptimos
+        auc_pr_train_all_folds,
+        auc_pr_val_all_folds,
+        f1_train_all_folds,
+        f1_val_all_folds)
 
 
 def obtener_umbral_optimo(thresholds_all_folds, y_val_raw, y_val_pred):
@@ -295,7 +301,7 @@ def run_bohb_with_smac():
     return smac.optimize()
 
 # --------------------------------------------
-# 8. Entrenamiento Final y Evaluación
+# 8. Entrenamiento Final 
 # --------------------------------------------
 
 def entrenar_modelo_final(best_config, X_train_full, y_train_full):
@@ -336,7 +342,9 @@ def entrenar_modelo_final(best_config, X_train_full, y_train_full):
 
     return model, history, scaler
 
-
+# --------------------------------------------
+# 9. Evaluación
+# --------------------------------------------
 def evaluar_modelo(model, X_test_final, y_test, thresholds_all_folds):
     """Evalúa el modelo en los datos de prueba y genera métricas clave."""
     y_pred_prob = model.predict(X_test_final)
@@ -365,76 +373,61 @@ def evaluar_modelo(model, X_test_final, y_test, thresholds_all_folds):
     plt.show()
 
 
+def plot_metrics(auc_pr_train, auc_pr_val, f1_train, f1_val):
+    """Grafica la evolución de AUC-PR y F1-score en los folds."""
+    plt.figure(figsize=(12, 5))
+
+    # Gráfico AUC-PR
+    plt.subplot(1, 2, 1)
+    plt.plot(np.mean(auc_pr_train, axis=0), label="AUC-PR Train", linestyle="--", color="blue")
+    plt.plot(np.mean(auc_pr_val, axis=0), label="AUC-PR Val", color="blue")
+    plt.xlabel("Épocas")
+    plt.ylabel("AUC-PR")
+    plt.legend()
+    plt.title("Curva AUC-PR")
+
+    # Gráfico F1-score
+    plt.subplot(1, 2, 2)
+    plt.plot(np.mean(f1_train, axis=0), label="F1 Train", linestyle="--", color="green")
+    plt.plot(np.mean(f1_val, axis=0), label="F1 Val", color="green")
+    plt.xlabel("Épocas")
+    plt.ylabel("F1-score")
+    plt.legend()
+    plt.title("Evolución del F1-score")
+
+    plt.show()
+
+# --------------------------------------------
+# 9. Despliegue
+# --------------------------------------------
+
 if __name__ == "__main__":
     # Optimización de hiperparámetros
-    best_config = run_bohb_with_smac()
-    print("\n Mejor configuración encontrada:")
+    (
+        best_config,
+        thresholds_all_folds,
+        auc_pr_train_all_folds,
+        auc_pr_val_all_folds,
+        f1_train_all_folds,
+        f1_val_all_folds
+    ) = run_bohb_with_smac()  # ← GUARDAR todas las métricas
+
+    print("\nMejor configuración encontrada:")
     for key, value in best_config.items():
         print(f"{key}: {value}")
 
     # Preprocesamiento final de datos
-    X_train_final, y_train_final, _, scaler_final = preprocesar_datos(
-        X_train_full, y_train_full
-    )
+    X_train_final, y_train_final, _, scaler_final = preprocesar_datos(X_train_full, y_train_full)
     X_test_final = scaler_final.transform(X_test)
-    
-    final_model, training_history, scaler_final = entrenar_modelo_final(best_config, X_train_final, y_train_final)
-
 
     # Entrenamiento del modelo final
-    #final_model, training_history = entrenar_modelo_final(best_config, X_train_final, y_train_final)
+    final_model, training_history, scaler_final = entrenar_modelo_final(best_config, X_train_final, y_train_final)
 
     # Evaluación final del modelo
-    evaluar_modelo(final_model, X_test_final, y_test)
+    evaluar_modelo(final_model, X_test_final, y_test, thresholds_all_folds)
 
-# --------------------------------------------
-# anexo. mejoras en la evaluación
-# --------------------------------------------
+    # Graficar métricas
+    plot_metrics(auc_pr_train_all_folds, auc_pr_val_all_folds, f1_train_all_folds, f1_val_all_folds)
 
-# Graficar AUC-PR
-plt.figure(figsize=(12, 6))
 
-# AUC-PR para entrenamiento
-plt.subplot(1, 2, 1)
-for i, auc_pr_train in enumerate(auc_pr_train_all_folds):
-    plt.plot(auc_pr_train, label=f'Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('AUC-PR (Train)')
-plt.title('AUC-PR para Entrenamiento')
-plt.legend()
 
-# AUC-PR para validación
-plt.subplot(1, 2, 2)
-for i, auc_pr_val in enumerate(auc_pr_val_all_folds):
-    plt.plot(auc_pr_val, label=f'Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('AUC-PR (Validation)')
-plt.title('AUC-PR para Validación')
-plt.legend()
-
-plt.tight_layout()
-plt.show()
-
-# Graficar F1-score
-plt.figure(figsize=(12, 6))
-
-# F1-score para entrenamiento
-plt.subplot(1, 2, 1)
-for i, f1_train in enumerate(f1_train_all_folds):
-    plt.plot(f1_train, label=f'Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('F1-score (Train)')
-plt.title('F1-score para Entrenamiento')
-plt.legend()
-
-# F1-score para validación
-plt.subplot(1, 2, 2)
-for i, f1_val in enumerate(f1_val_all_folds):
-    plt.plot(f1_val, label=f'Fold {i+1}')
-plt.xlabel('Epochs')
-plt.ylabel('F1-score (Validation)')
-plt.title('F1-score para Validación')
-plt.legend()
-
-plt.tight_layout()
-plt.show()
