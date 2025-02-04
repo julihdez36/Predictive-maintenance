@@ -1,13 +1,16 @@
+# Librerías de trabajo
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_auc_score, f1_score, confusion_matrix, roc_curve, auc
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
+from keras.utils import plot_model
 from ConfigSpace import ConfigurationSpace, UniformFloatHyperparameter, UniformIntegerHyperparameter, CategoricalHyperparameter
 from ConfigSpace.conditions import GreaterThanCondition
 from smac.facade import HyperbandFacade
@@ -16,8 +19,13 @@ import tensorflow as tf
 from imblearn.combine import SMOTETomek
 import json
 import joblib
-from keras.utils import plot_model
+from skopt import gp_minimize
 
+# Semillas para reproducibilidad
+tf.random.set_seed(42)
+np.random.seed(42)
+
+# Paralelicemos la ejecución
 
 tf.config.threading.set_inter_op_parallelism_threads(4)  # Ajusta según tus núcleos
 tf.config.threading.set_intra_op_parallelism_threads(4)
@@ -25,9 +33,7 @@ tf.config.threading.set_intra_op_parallelism_threads(4)
 print(tf.config.threading.get_inter_op_parallelism_threads())
 print(tf.config.threading.get_intra_op_parallelism_threads())
 
-# Semillas para reproducibilidad
-tf.random.set_seed(42)
-np.random.seed(42)
+
 
 # Carga de datos
 url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento.csv'
@@ -41,7 +47,8 @@ X_train_full, X_test, y_train_full, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Preprocesamiento: balanceo y escalada de datos
+# Preprocesamiento: balanceo escalada de datos
+
 def preprocesar_datos(X, y, scaler_fit=True, scaler_obj=None):
     # Aplicar SMOTE + Tomek para balancear
     smote_tomek = SMOTETomek(sampling_strategy=0.5, random_state=42)
@@ -56,14 +63,16 @@ def preprocesar_datos(X, y, scaler_fit=True, scaler_obj=None):
         X_res = scaler.transform(X_res)
     return X_res, y_res, scaler
 
-# Para la optimización: preproceso sobre entrenamiento
+# Conjutno de entrenamiento balanceado
+# X_(34978,21)
 
 X_train_bal, y_train_bal, scaler_cv = preprocesar_datos(X_train_full, y_train_full)
 
 # Escalamiento del conjunto de prueba 
 X_test_scaled = scaler_cv.transform(X_test)
 
-# Función del modelo (dinámico) de red
+
+# Red neuronal
 
 def create_model(config):
     model = Sequential()
@@ -92,22 +101,25 @@ def create_model(config):
     model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
     return model
 
-# 4. Función objetivo:      con validación cruzada y early stopping
+# Función objetivo para la optimización de hiperparámetros
 
-def objective_function(config, seed, budget):  # Eliminamos el argumento 'instance'
-    # Usamos 3-fold cross validation sobre el conjunto de entrenamiento balanceado
+def objective_function(config, seed, budget):
     kfold = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-    cv_losses = []
-    
+    cv_aucs_pr = []  # Guardar los AUC-PR de cada fold
+
     for train_idx, val_idx in kfold.split(X_train_bal, y_train_bal):
         X_train_cv, X_val_cv = X_train_bal[train_idx], X_train_bal[val_idx]
         y_train_cv, y_val_cv = np.array(y_train_bal)[train_idx], np.array(y_train_bal)[val_idx]
-        
+
         model = create_model(config)
-        
-        # Callback de early stopping: monitorizar la pérdida en validación 5 epochs
-        early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, verbose=0)
-        
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=config["learning_rate"]),
+            loss='binary_crossentropy',
+            metrics=[tf.keras.metrics.AUC(name="auc_pr", curve="PR")]  # <== Cambia de ROC a PR
+        )
+
+        early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=5, restore_best_weights=True, mode='max', verbose=0)
+
         history = model.fit(
             X_train_cv, y_train_cv,
             epochs=int(budget),
@@ -116,12 +128,13 @@ def objective_function(config, seed, budget):  # Eliminamos el argumento 'instan
             verbose=0,
             callbacks=[early_stop]
         )
-        
-        # Pérdida de validación del último epoch (o del mejor restaurado)
-        cv_losses.append(history.history['val_loss'][-1])
-    
-    # promedio de pérdidas de validación de los folds
-    return np.mean(cv_losses)
+
+        best_auc_pr = max(history.history['val_auc_pr'])  # Extraer el mejor AUC-PR
+        cv_aucs_pr.append(best_auc_pr)
+
+    return -np.mean(cv_aucs_pr)  # Negativo porque optimizamos minimizando
+
+
 
 # Espacio de búsqueda de hiperparámetros
 
@@ -166,6 +179,7 @@ def run_bohb_with_smac():
 
     return smac.optimize()
 
+
 # Ejecución BOBH
 
 best_config = run_bohb_with_smac()
@@ -179,12 +193,17 @@ X_train_final, y_train_final, scaler_final = preprocesar_datos(X_train_full, y_t
 # conjunto de prueba con el scaler final
 X_test_final = scaler_final.transform(X_test)
 
-# modelo final con la mejor configuración encontrada
-final_model = create_model(best_config)
-# Callback de early stopping para el entrenamiento final
-early_stop_final = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=5, restore_best_weights=True, verbose=1)
+# Entrenamiento del modelo final
 
-# Entrenar el modelo final 
+final_model = create_model(best_config)
+early_stop_final = tf.keras.callbacks.EarlyStopping(monitor='auc_pr', patience=5, restore_best_weights=True, verbose=1)
+
+final_model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=best_config["learning_rate"]),
+    loss='binary_crossentropy',
+    metrics=[tf.keras.metrics.AUC(name="auc_pr", curve="PR")]
+)
+
 final_model.fit(
     X_train_final, y_train_final,
     epochs=50,
@@ -194,66 +213,88 @@ final_model.fit(
 )
 
 
-# Evaluación del modelo final
+
+# ---- 1 Evaluación final del modelo ----
 loss, accuracy = final_model.evaluate(X_test_final, y_test, verbose=0)
-print(f"\nPérdida en test: {loss:.4f}")
-print(f"Exactitud en test: {accuracy:.4f}")
+print(f"\n Pérdida en test: {loss:.4f}")
+print(f" Exactitud en test: {accuracy:.4f}")
 
-# Predicciones para las métricas adicionales
-y_pred_prob = final_model.predict(X_test_final)  # Predicciones de probabilidades
-y_pred = (y_pred_prob > 0.7).astype(int)  # Predicciones de clase (0 o 1)
+# Predicciones de probabilidades
+y_pred_prob = final_model.predict(X_test_final)
 
-# Métricas
-roc_auc = roc_auc_score(y_test, y_pred_prob)
-precision = precision_score(y_test, y_pred)
-recall = recall_score(y_test, y_pred)
-f1 = f1_score(y_test, y_pred)
-conf_matrix = confusion_matrix(y_test, y_pred)
+# ---- 2️Encontrar umbral óptimo basado en F1-score ----
+thresholds = np.arange(0.1, 0.9, 0.05)
+f1_scores = [f1_score(y_test, (y_pred_prob > t).astype(int)) for t in thresholds]
+optimal_threshold = thresholds[np.argmax(f1_scores)]
+print(f"\n Umbral óptimo basado en F1-score: {optimal_threshold:.2f}")
 
-# Imprimir las métricas
-print(f"\nPérdida en test: {loss:.4f}")
-print(f"Exactitud en test: {accuracy:.4f}")
-print(f"\nAUC-ROC: {roc_auc:.4f}")
-print(f"Precisión: {precision:.4f}")
-print(f"Recall: {recall:.4f}")
-print(f"F1-Score: {f1:.4f}")
+# Aplicar umbral óptimo a las predicciones
+y_pred_optimal = (y_pred_prob > optimal_threshold).astype(int)
 
-# Mostrar la matriz de confusión
-print("\nMatriz de Confusión:")
-print(conf_matrix)
+# ---- 3 Calcular métricas avanzadas ----
+# Curva Precision-Recall y AUC-PR
+precision_pr, recall_pr, _ = precision_recall_curve(y_test, y_pred_prob)
+auc_pr = average_precision_score(y_test, y_pred_prob)
+print(f"AUC-PR (Precision-Recall): {auc_pr:.4f}")
 
-# Reporte completo de clasificación (incluye precisión, recall y f1-score para cada clase)
-print("\nReporte de clasificación:")
-print(classification_report(y_test, y_pred))
+# Curva ROC y AUC
+fpr, tpr, _ = roc_curve(y_test, y_pred_prob)
+auc_roc = auc(fpr, tpr)
+print(f"🔹 AUC-ROC: {auc_roc:.4f}")
 
-# Opcional: Visualización de la matriz de confusión
-sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=["No Falla", "Falla"], yticklabels=["No Falla", "Falla"])
-plt.title("Matriz de Confusión")
-plt.xlabel("Predicciones")
-plt.ylabel("Verdaderos")
+# ---- 4️⃣ Visualización de resultados ----
+
+# 📌 Matriz de confusión con etiquetas
+conf_matrix = confusion_matrix(y_test, y_pred_optimal)
+plt.figure(figsize=(5, 4))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', 
+            xticklabels=['No Quemado', 'Quemado'], 
+            yticklabels=['No Quemado', 'Quemado'])
+plt.xlabel('Predicho')
+plt.ylabel('Real')
+plt.title('Matriz de Confusión')
 plt.show()
 
+# 📌 Gráfica de F1-score vs. umbral
+plt.figure(figsize=(6, 4))
+plt.plot(thresholds, f1_scores, marker='o', linestyle='-')
+plt.axvline(optimal_threshold, color='r', linestyle='--', label=f'Óptimo: {optimal_threshold:.2f}')
+plt.xlabel('Umbral de decisión')
+plt.ylabel('F1-score')
+plt.title('F1-score vs. Umbral')
+plt.legend()
+plt.grid()
+plt.show()
 
+# 📌 Curva Precision-Recall
+plt.figure(figsize=(6, 4))
+plt.plot(recall_pr, precision_pr, marker='.', label=f'AUC-PR: {auc_pr:.2f}')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Curva Precision-Recall')
+plt.legend()
+plt.grid()
+plt.show()
 
+# 📌 Curva ROC
+plt.figure(figsize=(6, 4))
+plt.plot(fpr, tpr, marker='.', label=f'AUC-ROC: {auc_roc:.2f}')
+plt.xlabel('Tasa de Falsos Positivos')
+plt.ylabel('Tasa de Verdaderos Positivos')
+plt.title('Curva ROC')
+plt.legend()
+plt.grid()
+plt.show()
 
 
 # Guardado de modelo
 
-final_model.save('Modelos/Modelo_final.h5')
-
+final_model.save('Modelos/segundo_modeloAUC.h5')
 
 best_config_dict = best_config.get_dictionary()
 
-with open('Modelos/mejores_hiperparametros.json', 'w') as f:
+with open('Modelos/segundo_hiperparametrosAUC.json', 'w') as f:
     json.dump(best_config_dict, f, indent=4)
     
-joblib.dump(scaler_final, 'Modelos/scaler_entrenado.pkl')
+joblib.dump(scaler_final, 'Modelos/segundo_scalerAUC.pkl')
 
-plot_model(
-    final_model,
-    to_file='model_plot.png',
-    show_shapes=True,
-    show_layer_names=True,
-    rankdir='TB',
-    dpi=96
-)
