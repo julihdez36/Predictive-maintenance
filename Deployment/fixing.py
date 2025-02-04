@@ -105,36 +105,53 @@ def create_model(config):
 
 def objective_function(config, seed, budget):
     kfold = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-    cv_aucs_pr = []  # Guardar los AUC-PR de cada fold
-
-    for train_idx, val_idx in kfold.split(X_train_bal, y_train_bal):
-        X_train_cv, X_val_cv = X_train_bal[train_idx], X_train_bal[val_idx]
-        y_train_cv, y_val_cv = np.array(y_train_bal)[train_idx], np.array(y_train_bal)[val_idx]
-
+    cv_aucs_pr = []
+    
+    for train_idx, val_idx in kfold.split(X_train_full, y_train_full):  # Usar datos originales
+        # Split RAW
+        X_train_raw = X_train_full.iloc[train_idx]
+        y_train_raw = y_train_full.iloc[train_idx]
+        X_val_raw = X_train_full.iloc[val_idx]
+        y_val_raw = y_train_full.iloc[val_idx]
+        
+        # *** Balancear SOLO el train del fold ***
+        smote_tomek = SMOTETomek(sampling_strategy=0.5, random_state=seed)
+        X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_raw, y_train_raw)
+        
+        # Escalar
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train_bal)
+        X_val_scaled = scaler.transform(X_val_raw)  # Val sin balancear
+        
+        # *** Modelo con métrica AUC-PR confiable ***
         model = create_model(config)
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=config["learning_rate"]),
+            optimizer=Adam(learning_rate=config["learning_rate"]),
             loss='binary_crossentropy',
-            metrics=[tf.keras.metrics.AUC(name="auc_pr", curve="PR")]  # <== Cambia de ROC a PR
+            metrics=[tf.keras.metrics.AUC(name="prc", curve='PR')]  # Nombre correcto
         )
-
-        early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=5, restore_best_weights=True, mode='max', verbose=0)
-
+        
+        # Early stopping por AUC-PR de validación
+        early_stop = tf.keras.callbacks.EarlyStopping(
+            monitor='val_prc', 
+            patience=5, 
+            mode='max',
+            restore_best_weights=True
+        )
+        
         history = model.fit(
-            X_train_cv, y_train_cv,
+            X_train_scaled, y_train_bal,
+            validation_data=(X_val_scaled, y_val_raw),  # Val original (no balanceado)
             epochs=int(budget),
             batch_size=config["batch_size"],
-            validation_data=(X_val_cv, y_val_cv),
             verbose=0,
             callbacks=[early_stop]
         )
-
-        best_auc_pr = max(history.history['val_auc_pr'])  # Extraer el mejor AUC-PR
+        
+        best_auc_pr = max(history.history['val_prc'])
         cv_aucs_pr.append(best_auc_pr)
-
-    return -np.mean(cv_aucs_pr)  # Negativo porque optimizamos minimizando
-
-
+    
+    return -np.mean(cv_aucs_pr)  # SMAC minimiza
 
 # Espacio de búsqueda de hiperparámetros
 
@@ -181,6 +198,7 @@ def run_bohb_with_smac():
 
 
 # Ejecución BOBH
+
 
 best_config = run_bohb_with_smac()
 print("\nMejor configuración encontrada:")

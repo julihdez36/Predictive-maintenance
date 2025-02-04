@@ -2,7 +2,7 @@
 """Predictive Maintenance con Optimización de Hiperparámetros para AUC-PR"""
 import numpy as np
 import pandas as pd
-import pickle
+#import pickle
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import RobustScaler
@@ -39,8 +39,8 @@ from imblearn.combine import SMOTETomek
 tf.random.set_seed(42)
 np.random.seed(42)
 # Configurar paralelismo de TensorFlow
-tf.config.threading.set_inter_op_parallelism_threads(4)
-tf.config.threading.set_intra_op_parallelism_threads(4)
+tf.config.threading.set_inter_op_parallelism_threads(10)
+tf.config.threading.set_intra_op_parallelism_threads(10)
 
 # --------------------------------------------
 # 2. Carga y Preparación de Datos
@@ -103,42 +103,51 @@ def focal_loss(alpha=0.25, gamma=2.0):
     return loss
 
 
-def create_model(config):
-    model = Sequential()
-
-    # Capa de entrada
-    model.add(Dense(
-        units=config["units_1"],
-        input_dim=X_train_full.shape[1],
-        activation=config["activation_1"],
-        kernel_regularizer=l2(config["l2"]) if config["use_l2"] else None,  # Regularización L2
-        activity_regularizer=l1(config["l1"]) if config["use_l1"] else None  # Regularización L1
-    ))
-    model.add(Dropout(config["dropout"]))
-
-    # Capas ocultas
-    for i in range(2, config["num_layers"] + 1):
-        model.add(Dense(
-            units=config[f"units_{i}"],
-            activation=config[f"activation_{i}"],
-            kernel_regularizer=l2(config["l2"]) if config["use_l2"] else None,  # Regularización L2
-            activity_regularizer=l1(config["l1"]) if config["use_l1"] else None  # Regularización L1
-        ))
-        model.add(Dropout(config["dropout"]))
-
+def create_model(best_config, input_dim):
+    """
+    Crea y devuelve un modelo utilizando los mejores hiperparámetros.
+    """
+    model = tf.keras.Sequential()
+    
+    num_layers = best_config['num_layers']
+    
+    for i in range(num_layers):
+        units = best_config[f"units_{i+1}"]
+        activation = best_config[f"activation_{i+1}"]
+        
+        # Regularización L1 y L2
+        l1 = best_config['l1'] if best_config['use_l1'] else 0.0
+        l2 = best_config['l2'] if best_config['use_l2'] else 0.0
+        regularizer = tf.keras.regularizers.l1_l2(l1=l1, l2=l2)
+        
+        # Capa densa con regularización
+        if i == 0:
+            model.add(tf.keras.layers.Dense(units, activation=activation, input_dim=input_dim, kernel_regularizer=regularizer))
+        else:
+            model.add(tf.keras.layers.Dense(units, activation=activation, kernel_regularizer=regularizer))
+        
+        # Dropout
+        dropout = best_config['dropout']
+        model.add(tf.keras.layers.Dropout(dropout))
+    
     # Capa de salida
-    model.add(Dense(1, activation='sigmoid'))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
-    # Configurar optimizador
-    optimizer = Adam(learning_rate=config["learning_rate"])
+    # Elección del optimizador
+    optimizer_choice = best_config['optimizer']
+    if optimizer_choice == 'adam':
+        optimizer = tf.keras.optimizers.Adam(learning_rate=best_config['learning_rate'])
+    elif optimizer_choice == 'rmsprop':
+        optimizer = tf.keras.optimizers.RMSprop(learning_rate=best_config['learning_rate'])
+    elif optimizer_choice == 'sgd':
+        optimizer = tf.keras.optimizers.SGD(learning_rate=best_config['learning_rate'])
 
-    # Definir la función de pérdida
-    loss_function = focal_loss(alpha=0.25, gamma=2.0) if config.get("use_focal_loss", False) else "binary_crossentropy"
-
-    # Compilar modelo
-    model.compile(optimizer=optimizer, loss=loss_function, metrics=['accuracy'])
-
+    model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    
     return model
+
+
+
 
 # --------------------------------------------
 # 5. Función Objetivo para SMAC (Corregida)
@@ -234,7 +243,7 @@ def obtener_umbral_optimo(thresholds_all_folds, y_val_raw, y_val_pred):
     best_threshold_avg = np.mean(thresholds_all_folds)
 
     # O, alternativamente, buscar el umbral que maximiza el F1-score globalmente
-    best_threshold = find_best_threshold(y_val_raw, y_val_pred)
+    #best_threshold = find_best_threshold(y_val_raw, y_val_pred)
     
     return best_threshold_avg  # O retornar `best_threshold` si prefieres uno específico
 
@@ -246,14 +255,15 @@ def obtener_umbral_optimo(thresholds_all_folds, y_val_raw, y_val_pred):
 
 def get_configspace():
     cs = ConfigurationSpace()
-    max_layers = 7
+    max_layers = 12
 
     # Hiperparámetros principales
     learning_rate = UniformFloatHyperparameter('learning_rate', 1e-5, 1e-2, log=True)
     num_layers = UniformIntegerHyperparameter('num_layers', 1, max_layers)
-    dropout = UniformFloatHyperparameter('dropout', 0.05, 0.6)  # Rango dropout
-    batch_size = UniformIntegerHyperparameter('batch_size', 32, 256, log=True)
-    cs.add_hyperparameters([learning_rate, num_layers, dropout, batch_size])
+    dropout = UniformFloatHyperparameter('dropout', 0.05, 0.5)  # Rango dropout
+    batch_size = CategoricalHyperparameter('batch_size', [32, 64, 128, 256])
+    optimizer = CategoricalHyperparameter('optimizer', ['adam', 'rmsprop', 'sgd'])  # Nuevo
+    cs.add_hyperparameters([learning_rate, num_layers, dropout, batch_size, optimizer])
 
     # Regularización L1 y L2
     l1_reg = UniformFloatHyperparameter('l1', 1e-6, 1e-2, log=True)  # Regularización L1
@@ -270,14 +280,20 @@ def get_configspace():
     # Hiperparámetros condicionales por capa
     for i in range(1, max_layers + 1):
         units = UniformIntegerHyperparameter(f"units_{i}", 10, 250, log=True)
-        activation = CategoricalHyperparameter(f"activation_{i}", ['relu', 'tanh', 'swish', 'elu'])  # Añade 'swish' y 'elu'
+        activation = CategoricalHyperparameter(f"activation_{i}", ['relu', 'tanh', 'swish', 'elu'])
         cs.add_hyperparameters([units, activation])
 
+        # Condiciones para capas adicionales (asegura que solo existan si num_layers >= i)
+        cs.add_condition(EqualsCondition(units, num_layers, i))  # Solo se asigna unidades si la capa existe
+        cs.add_condition(EqualsCondition(activation, num_layers, i))  # Solo se asigna activación si la capa existe
+
+        # Asegurar que las capas extra no tengan valores si num_layers < i
         if i > 1:
             cs.add_condition(GreaterThanCondition(units, num_layers, i - 1))
             cs.add_condition(GreaterThanCondition(activation, num_layers, i - 1))
 
     return cs
+
 
 # --------------------------------------------
 # 7. Optimización con SMAC
@@ -286,10 +302,10 @@ def run_bohb_with_smac():
     scenario = Scenario(
         configspace=get_configspace(),
         deterministic=True,
-        n_trials=100,  # Reducido para prueba, aumentar a 300 en producción
+        n_trials=300,  
         min_budget=5,
         max_budget=50,
-        n_workers=4
+        n_workers=10
     )
     
     smac = HyperbandFacade(
@@ -325,8 +341,8 @@ def entrenar_modelo_final(best_config, X_train_full, y_train_full):
     X_val_scaled = scaler.transform(X_val_split)
 
     # 4. Crear y entrenar el modelo
-    model = create_model(best_config)
-    class_weight = {0: 1.0, 1: 30310 / 1436}  # Ajustar según el desbalanceo
+    model = create_model(best_config, input_dim=X_train_scaled.shape[1])  # Ahora incluye el optimizador
+    class_weight = {0: 1.0, 1: np.sqrt(30310 / 1436)}  # Ajustar según el desbalanceo
 
     history = model.fit(
         X_train_scaled, y_train_bal,
@@ -341,6 +357,7 @@ def entrenar_modelo_final(best_config, X_train_full, y_train_full):
     )
 
     return model, history, scaler
+
 
 # --------------------------------------------
 # 9. Evaluación
@@ -401,33 +418,48 @@ def plot_metrics(auc_pr_train, auc_pr_val, f1_train, f1_val):
 # 9. Despliegue
 # --------------------------------------------
 
-if __name__ == "__main__":
-    # Optimización de hiperparámetros
-    (
-        best_config,
-        thresholds_all_folds,
-        auc_pr_train_all_folds,
-        auc_pr_val_all_folds,
-        f1_train_all_folds,
-        f1_val_all_folds
-    ) = run_bohb_with_smac()  # ← GUARDAR todas las métricas
+# Optimización de hiperparámetros
 
-    print("\nMejor configuración encontrada:")
-    for key, value in best_config.items():
-        print(f"{key}: {value}")
-
-    # Preprocesamiento final de datos
-    X_train_final, y_train_final, _, scaler_final = preprocesar_datos(X_train_full, y_train_full)
-    X_test_final = scaler_final.transform(X_test)
-
-    # Entrenamiento del modelo final
-    final_model, training_history, scaler_final = entrenar_modelo_final(best_config, X_train_final, y_train_final)
-
-    # Evaluación final del modelo
-    evaluar_modelo(final_model, X_test_final, y_test, thresholds_all_folds)
-
-    # Graficar métricas
-    plot_metrics(auc_pr_train_all_folds, auc_pr_val_all_folds, f1_train_all_folds, f1_val_all_folds)
+best_config = run_bohb_with_smac()
+print("\nMejor configuración encontrada:")
+for key, value in best_config.items():
+    print(f"{key}: {value}")
 
 
+# Modelo
+# Conjunto de entrenamiento completo
+X_train_final, y_train_final, scaler_final = preprocesar_datos(X_train_full, y_train_full, scaler_fit=True)
+# conjunto de prueba con el scaler final
+X_test_final = scaler_final.transform(X_test)
 
+# modelo final con la mejor configuración encontrada
+final_model = create_model(best_config)
+# Callback de early stopping para el entrenamiento final
+early_stop_final = tf.keras.callbacks.EarlyStopping(monitor='auc', patience=5, restore_best_weights=True, mode='max', verbose=1)
+
+# Entrenar el modelo final 
+final_model.fit(
+    X_train_final, y_train_final,
+    epochs=50,
+    batch_size=best_config["batch_size"],
+    verbose=1,
+    callbacks=[early_stop_final]
+)
+
+
+# --------------------------------------------
+# 10. Guardado de modelo
+# --------------------------------------------
+
+final_model.save('Modelo.h5')
+
+import json
+import joblib
+
+
+best_config_dict = best_config.get_dictionary()
+
+with open('hiperparametros.json', 'w') as f:
+    json.dump(best_config_dict, f, indent=4)
+    
+joblib.dump(scaler_final, 'scaler.pkl')
