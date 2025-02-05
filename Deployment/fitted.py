@@ -39,8 +39,8 @@ from imblearn.combine import SMOTETomek
 # --------------------------------------------
 tf.random.set_seed(42)
 np.random.seed(42)
-tf.config.threading.set_inter_op_parallelism_threads(4)
-tf.config.threading.set_intra_op_parallelism_threads(4)
+tf.config.threading.set_inter_op_parallelism_threads(10)
+tf.config.threading.set_intra_op_parallelism_threads(10)
 
 # --------------------------------------------
 # 2. Carga y Preparación de Datos
@@ -226,7 +226,7 @@ def run_bohb_with_smac():
         n_trials=300,
         min_budget=5,
         max_budget=50,
-        n_workers=4
+        n_workers=10
     )
     
     smac = HyperbandFacade(
