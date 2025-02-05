@@ -242,7 +242,7 @@ def run_bohb_with_smac():
         n_trials=300,  
         min_budget=5,
         max_budget=50,
-        n_workers=10
+        n_workers=4
     )
     
     smac = HyperbandFacade(
