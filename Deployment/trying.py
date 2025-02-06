@@ -17,7 +17,7 @@ from sklearn.metrics import (
 )
 import tensorflow.keras.backend as K
 from tensorflow.keras.regularizers import l1, l2
-import tensorflow_addons as tfa
+#import tensorflow_addons as tfa
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import Adam
@@ -151,21 +151,23 @@ def find_best_threshold(y_true, y_pred):
     best_threshold = thresholds[np.argmax(f1_scores)]  # np.argmax evita problemas con NaN
     return best_threshold
 
+global_histories = []
+
 def objective_function(config, seed, budget):
+    global global_histories  # Accedemos a la variable global
     kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    auc_pr_scores, f1_scores, thresholds_all_folds = [], [], []
+    auc_pr_scores, thresholds_all_folds = [], []
 
     for train_idx, val_idx in kfold.split(X_train_full, y_train_full):
         X_train_raw, y_train_raw = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx]
         X_val_raw, y_val_raw = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx]
 
         X_train_scaled, y_train_bal, X_val_scaled, _ = preprocesar_datos(X_train_raw, y_train_raw, X_val_raw)
-
         model = create_model(config, input_dim=X_train_scaled.shape[1])
         
         class_weight = {0: len(y_train_bal) / (2 * sum(y_train_bal == 0)),
-                        1: len(y_train_bal) / (2 * sum(y_train_bal == 1))}  # Corrección del class_weight dinámico
-        
+                        1: len(y_train_bal) / (2 * sum(y_train_bal == 1))}  
+
         history = model.fit(
             X_train_scaled, y_train_bal,
             validation_data=(X_val_scaled, y_val_raw),
@@ -177,13 +179,13 @@ def objective_function(config, seed, budget):
         )
 
         y_val_pred = model.predict(X_val_scaled, verbose=0).ravel()
-        auc_pr = average_precision_score(y_val_raw, y_val_pred)
-        auc_pr_scores.append(auc_pr)
+        auc_pr_scores.append(average_precision_score(y_val_raw, y_val_pred))
+        thresholds_all_folds.append(find_best_threshold(y_val_raw, y_val_pred))
 
-        best_threshold = find_best_threshold(y_val_raw, y_val_pred)
-        thresholds_all_folds.append(best_threshold)
+        global_histories.append(history.history)  # Guardamos el historial en la variable global
 
     return {"auc_pr": np.mean(auc_pr_scores), "threshold": np.mean(thresholds_all_folds)}
+
 
 
 # --------------------------------------------

@@ -12,12 +12,14 @@ from sklearn.metrics import (
     classification_report,
     PrecisionRecallDisplay,
     precision_recall_curve,
-    f1_score
+    f1_score,
+    recall_score,
+    precision_score
 )
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from tensorflow.keras.regularizers import l1, l2
+# from tensorflow.keras.regularizers import l1, l2
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, Activation
 from tensorflow.keras.optimizers import Adam, RMSprop, SGD
@@ -33,6 +35,8 @@ from smac.facade import HyperbandFacade
 from smac import Scenario
 
 from imblearn.combine import SMOTETomek
+import json
+import joblib
 
 # --------------------------------------------
 # 1. Configuración Inicial y Semillas
@@ -79,61 +83,88 @@ def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None, scaler=None):
 # --------------------------------------------
 def focal_loss(alpha=0.25, gamma=2.0):
     """
-    Función de pérdida focal para abordar el desbalanceo de clases.
+    Función de pérdida focal optimizada para datos desbalanceados.
+    
+    Parámetros:
+        alpha (float): Factor de ajuste para la clase minoritaria (0 < alpha < 1).
+        gamma (float): Factor de modulación que ajusta la penalización de los ejemplos bien clasificados.
+    
+    Retorna:
+        Función de pérdida focal que se puede utilizar en `model.compile(loss=focal_loss())`.
     """
     def loss(y_true, y_pred):
+        # Convertir a float
         y_true = K.cast(y_true, K.floatx())
+        
+        # Asegurar estabilidad numérica
         epsilon = K.epsilon()
         y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Calcular la pérdida binaria estándar
         bce = K.binary_crossentropy(y_true, y_pred)
+        
+        # Probabilidad de la clase verdadera
         p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
-        return K.mean(alpha * K.pow(1 - p_t, gamma) * bce)
+        
+        # Factor de modulación (penaliza ejemplos bien clasificados)
+        focal_factor = K.pow(1.0 - p_t, gamma)
+        
+        # Aplicar alpha solo a la clase minoritaria
+        alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
+        
+        # Pérdida focal final
+        return K.mean(alpha_factor * focal_factor * bce)
+    
     return loss
 
 def create_model(best_config, input_dim):
     """
-    Crea y compila un modelo Keras de acuerdo con la configuración de hiperparámetros.
+    Crea y compila un modelo Keras con regularización optimizada y técnicas para mejorar la generalización.
     """
     model = Sequential()
     num_layers = best_config['num_layers']
     
-    # Se agregan las capas ocultas
+    # Regularización
+    l1_val = best_config.get('l1', 0.0) if best_config.get('use_l1', False) else 0.0
+    l2_val = best_config.get('l2', 0.0) if best_config.get('use_l2', False) else 0.0
+    regularizer = tf.keras.regularizers.l1_l2(l1=l1_val, l2=l2_val)
+
     for i in range(num_layers):
         units = best_config[f"units_{i+1}"]
         activation = best_config[f"activation_{i+1}"]
-        # Se aplican regularizadores si se han activado
-        l1_val = best_config['l1'] if best_config['use_l1'] else 0.0
-        l2_val = best_config['l2'] if best_config['use_l2'] else 0.0
-        regularizer = tf.keras.regularizers.l1_l2(l1=l1_val, l2=l2_val)
-        
-        # La primera capa requiere especificar input_shape
+
         if i == 0:
-            model.add(Dense(units, kernel_regularizer=regularizer, input_shape=(input_dim,)))
+            model.add(Dense(units, kernel_regularizer=regularizer, input_shape=(input_dim,), use_bias=False))
         else:
-            model.add(Dense(units, kernel_regularizer=regularizer))
-            
+            model.add(Dense(units, kernel_regularizer=regularizer, use_bias=False))
+
         model.add(BatchNormalization())
         model.add(Activation(activation))
-        model.add(Dropout(best_config['dropout']))
-    
+
+        # Mover Dropout antes de BatchNormalization en algunas configuraciones puede ser mejor
+        if best_config["dropout"] > 0:
+            model.add(Dropout(best_config["dropout"]))
+
     # Capa de salida
     model.add(Dense(1, activation='sigmoid'))
-    
-    # Selección del optimizador
+
+    # Optimización
     lr = best_config['learning_rate']
     optimizers = {
         'adam': Adam(learning_rate=lr),
         'rmsprop': RMSprop(learning_rate=lr),
-        'sgd': SGD(learning_rate=lr)
+        'sgd': SGD(learning_rate=lr, momentum=0.9, nesterov=True)  # Añadir momentum si usa SGD
     }
     optimizer = optimizers.get(best_config['optimizer'], Adam(learning_rate=lr))
-    
+
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(),
+        loss=focal_loss(alpha=0.25, gamma=2.0),  # Asegurar que focal loss está bien ajustada
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
+
     return model
+
 
 # --------------------------------------------
 # 5. Funciones Auxiliares para Evaluación
@@ -146,35 +177,56 @@ def find_best_threshold(y_true, y_pred):
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
     return thresholds[np.nanargmax(f1_scores)]
 
+global_history = []  # Lista global para almacenar los history
+global_thresholds = []  # Lista global para almacenar los umbrales
+
 def objective_function(config, seed, budget):
-    """
-    Función objetivo para SMAC. Se realiza validación cruzada estratificada
-    y se retorna 1 - AUC-PR promedio, ya que SMAC minimiza la función objetivo.
-    """
+    global global_history, global_thresholds  # Accedemos a las listas globales
     kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    auc_pr_scores = []
-    
+    auc_pr_scores, thresholds_all_folds, history_all_folds = [], [], []
+
     for train_idx, val_idx in kfold.split(X_train_full, y_train_full):
         X_train_raw, y_train_raw = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx]
         X_val_raw, y_val_raw = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx]
-        
+
         X_train_scaled, y_train_bal, X_val_scaled, _ = preprocesar_datos(X_train_raw, y_train_raw, X_val_raw)
-        model = create_model(config, X_train_scaled.shape[1])
-        
-        model.fit(
+
+        model = create_model(config, input_dim=X_train_scaled.shape[1])
+
+        class_weight = {
+            0: len(y_train_bal) / (2 * sum(y_train_bal == 0)),
+            1: len(y_train_bal) / (2 * sum(y_train_bal == 1))
+        }
+
+        callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
+
+        history = model.fit(
             X_train_scaled, y_train_bal,
             validation_data=(X_val_scaled, y_val_raw),
             epochs=int(budget),
             batch_size=config["batch_size"],
             verbose=0,
-            callbacks=[tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)]
+            class_weight=class_weight,
+            callbacks=callbacks
         )
-        
+
         y_val_pred = model.predict(X_val_scaled, verbose=0).ravel()
         auc_pr = average_precision_score(y_val_raw, y_val_pred)
         auc_pr_scores.append(auc_pr)
-    
-    return 1 - np.mean(auc_pr_scores)  # SMAC minimiza este valor
+
+        best_threshold = find_best_threshold(y_val_raw, y_val_pred)
+        thresholds_all_folds.append(best_threshold)
+
+        # Guardamos el historial del entrenamiento
+        history_all_folds.append(history.history)
+
+    # Guardamos los history y thresholds en listas globales
+    global_history.append({"config": config, "history": history_all_folds})
+    global_thresholds.append(np.mean(thresholds_all_folds))  # Almacenar el threshold promedio
+
+    return 1 - np.mean(auc_pr_scores)  # Solo devolver el valor que SMAC espera minimizar
+
+
 
 # --------------------------------------------
 # 6. Espacio de Búsqueda de Hiperparámetros
@@ -287,14 +339,18 @@ def evaluar_modelo(model, X_test, y_test, threshold):
     y_pred_prob = model.predict(X_test).ravel()
     y_pred = (y_pred_prob >= threshold).astype(int)
     
-    print(f"AUC-PR: {average_precision_score(y_test, y_pred_prob):.4f}")
+    auc_pr = average_precision_score(y_test, y_pred_prob)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    
+    print(f"AUC-PR: {auc_pr:.4f}")
+    print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {f1:.4f}")
     print(classification_report(y_test, y_pred))
+    
     PrecisionRecallDisplay.from_predictions(y_test, y_pred_prob)
     plt.show()
 
-
-import json
-import joblib
 
 # --------------------------------------------
 # 9. Ejecución Principal
@@ -303,24 +359,24 @@ if __name__ == "__main__":
     # Se ejecuta la optimización de hiperparámetros
     best_config = run_bohb_with_smac()
 
-    # guardemos configuracion
-    best_config_dict = best_config.get_dictionary()
-
-    with open('hiperparametros.json', 'w') as f:
-        json.dump(best_config_dict, f, indent=4)
-    
     # Entrenamiento final con la mejor configuración
     final_model, scaler, threshold = entrenar_modelo_final(best_config, X_train_full, y_train_full)
-
-    # guardar el modelo final
-    final_model.save('modelo_fitted.h5') 
-    joblib.dump(scaler, 'scaler.pkl')
     
     # Evaluación en el conjunto de test
-    #X_test_scaled = scaler.transform(X_test)
-    #evaluar_modelo(final_model, X_test_scaled, y_test, threshold)
+    X_test_scaled = scaler.transform(X_test)
+    evaluar_modelo(final_model, X_test_scaled, y_test, threshold)
     
 
-
+# --------------------------------------------
+# 10. Registro del modelo
+# --------------------------------------------
         
+# guardemos configuracion
+best_config_dict = best_config.get_dictionary()
+
+with open('hiperparametros.json', 'w') as f:
+    json.dump(best_config_dict, f, indent=4)
     
+# guardar el modelo final
+final_model.save('modelo_fitted.h5') 
+joblib.dump(scaler, 'scaler.pkl')
