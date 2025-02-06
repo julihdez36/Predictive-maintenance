@@ -1,124 +1,24 @@
 {
   "type": "Scheduler",
-  "id": "Scheduler-23f19ca4-04d3-4181-9c4f-8424f2d30a00",
-  "address": "tcp://127.0.0.1:55437",
+  "id": "Scheduler-f0708b6e-71ea-4851-9c5e-856ecea07300",
+  "address": "tcp://127.0.0.1:55684",
   "services": {
     "dashboard": 8787
   },
-  "started": 1738815731.363346,
+  "started": 1738816082.7170868,
   "workers": {
-    "tcp://127.0.0.1:55474": {
-      "type": "Worker",
-      "id": 8,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-10x3y0lj",
-      "name": 8,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.3671792,
-      "services": {
-        "dashboard": 55476
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66473984,
-        "time": 1738815734.2166004,
-        "host_net_io": {
-          "read_bps": 0.0,
-          "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 11435.504841529499,
-          "write_bps": 0.0
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55456"
-    },
-    "tcp://127.0.0.1:55475": {
-      "type": "Worker",
-      "id": 9,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-ry_u1bxa",
-      "name": 9,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.2811303,
-      "services": {
-        "dashboard": 55480
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66510848,
-        "time": 1738815734.2356899,
-        "host_net_io": {
-          "read_bps": 0.0,
-          "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 1015390.0487550684,
-          "write_bps": 0.0
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55458"
-    },
-    "tcp://127.0.0.1:55482": {
+    "tcp://127.0.0.1:55703": {
       "type": "Worker",
       "id": 0,
       "host": "127.0.0.1",
       "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-h3igkass",
+      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-0pekjvx7",
       "name": 0,
       "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.439478,
+      "memory_limit": 4263373824,
+      "last_seen": 1738816084.5454345,
       "services": {
-        "dashboard": 55483
+        "dashboard": 55704
       },
       "metrics": {
         "task_counts": {},
@@ -143,182 +43,32 @@
         },
         "event_loop_interval": 0.02,
         "cpu": 0.0,
-        "memory": 66527232,
-        "time": 1738815734.3358598,
+        "memory": 66416640,
+        "time": 1738816083.9382482,
         "host_net_io": {
           "read_bps": 0.0,
           "write_bps": 0.0
         },
         "host_disk_io": {
-          "read_bps": 647800.1911096246,
-          "write_bps": 0.0
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55440"
-    },
-    "tcp://127.0.0.1:55485": {
-      "type": "Worker",
-      "id": 4,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-0nnzm4e2",
-      "name": 4,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.2687223,
-      "services": {
-        "dashboard": 55486
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66502656,
-        "time": 1738815734.3565865,
-        "host_net_io": {
           "read_bps": 0.0,
           "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 724152.213982573,
-          "write_bps": 0.0
         }
       },
       "status": "running",
-      "nanny": "tcp://127.0.0.1:55448"
+      "nanny": "tcp://127.0.0.1:55687"
     },
-    "tcp://127.0.0.1:55492": {
-      "type": "Worker",
-      "id": 1,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-s7oqg_m2",
-      "name": 1,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.4321249,
-      "services": {
-        "dashboard": 55494
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66322432,
-        "time": 1738815734.3911722,
-        "host_net_io": {
-          "read_bps": 0.0,
-          "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 580836.0015281449,
-          "write_bps": 69353.55242127103
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55442"
-    },
-    "tcp://127.0.0.1:55493": {
-      "type": "Worker",
-      "id": 7,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-d29sjp8w",
-      "name": 7,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.6081238,
-      "services": {
-        "dashboard": 55495
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66428928,
-        "time": 1738815734.3820236,
-        "host_net_io": {
-          "read_bps": 0.0,
-          "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 668763.5189439107,
-          "write_bps": 53501.08151551286
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55454"
-    },
-    "tcp://127.0.0.1:55498": {
+    "tcp://127.0.0.1:55706": {
       "type": "Worker",
       "id": 3,
       "host": "127.0.0.1",
       "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-6c8se9jh",
+      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-4r21_q76",
       "name": 3,
       "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.4355197,
+      "memory_limit": 4263373824,
+      "last_seen": 1738816084.5701413,
       "services": {
-        "dashboard": 55499
+        "dashboard": 55707
       },
       "metrics": {
         "task_counts": {},
@@ -343,32 +93,82 @@
         },
         "event_loop_interval": 0.02,
         "cpu": 0.0,
-        "memory": 66686976,
-        "time": 1738815734.4011786,
+        "memory": 66674688,
+        "time": 1738816083.996969,
         "host_net_io": {
           "read_bps": 0.0,
           "write_bps": 0.0
         },
         "host_disk_io": {
-          "read_bps": 284314.13380369404,
-          "write_bps": 71078.53345092351
+          "read_bps": 0.0,
+          "write_bps": 0.0
         }
       },
       "status": "running",
-      "nanny": "tcp://127.0.0.1:55446"
+      "nanny": "tcp://127.0.0.1:55693"
     },
-    "tcp://127.0.0.1:55501": {
+    "tcp://127.0.0.1:55709": {
+      "type": "Worker",
+      "id": 1,
+      "host": "127.0.0.1",
+      "resources": {},
+      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-afoz445a",
+      "name": 1,
+      "nthreads": 1,
+      "memory_limit": 4263373824,
+      "last_seen": 1738816084.5865269,
+      "services": {
+        "dashboard": 55710
+      },
+      "metrics": {
+        "task_counts": {},
+        "bandwidth": {
+          "total": 100000000,
+          "workers": {},
+          "types": {}
+        },
+        "digests_total_since_heartbeat": {},
+        "managed_bytes": 0,
+        "spilled_bytes": {
+          "memory": 0,
+          "disk": 0
+        },
+        "transfer": {
+          "incoming_bytes": 0,
+          "incoming_count": 0,
+          "incoming_count_total": 0,
+          "outgoing_bytes": 0,
+          "outgoing_count": 0,
+          "outgoing_count_total": 0
+        },
+        "event_loop_interval": 0.02,
+        "cpu": 0.0,
+        "memory": 66482176,
+        "time": 1738816084.0271277,
+        "host_net_io": {
+          "read_bps": 0.0,
+          "write_bps": 0.0
+        },
+        "host_disk_io": {
+          "read_bps": 0.0,
+          "write_bps": 0.0
+        }
+      },
+      "status": "running",
+      "nanny": "tcp://127.0.0.1:55689"
+    },
+    "tcp://127.0.0.1:55712": {
       "type": "Worker",
       "id": 2,
       "host": "127.0.0.1",
       "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-kqc3ky_0",
+      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-obhkd2hq",
       "name": 2,
       "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.6150198,
+      "memory_limit": 4263373824,
+      "last_seen": 1738816084.6333413,
       "services": {
-        "dashboard": 55502
+        "dashboard": 55713
       },
       "metrics": {
         "task_counts": {},
@@ -393,119 +193,19 @@
         },
         "event_loop_interval": 0.02,
         "cpu": 0.0,
-        "memory": 66781184,
-        "time": 1738815734.493446,
-        "host_net_io": {
-          "read_bps": 14106.452272847375,
-          "write_bps": 0.0
-        },
-        "host_disk_io": {
-          "read_bps": 46823.36183920815,
-          "write_bps": 0.0
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55444"
-    },
-    "tcp://127.0.0.1:55504": {
-      "type": "Worker",
-      "id": 6,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-rl3td31h",
-      "name": 6,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.7520368,
-      "services": {
-        "dashboard": 55505
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66387968,
-        "time": 1738815734.6233351,
+        "memory": 66592768,
+        "time": 1738816084.0592077,
         "host_net_io": {
           "read_bps": 0.0,
           "write_bps": 0.0
         },
         "host_disk_io": {
           "read_bps": 0.0,
-          "write_bps": 7111203.704854343
+          "write_bps": 0.0
         }
       },
       "status": "running",
-      "nanny": "tcp://127.0.0.1:55452"
-    },
-    "tcp://127.0.0.1:55508": {
-      "type": "Worker",
-      "id": 5,
-      "host": "127.0.0.1",
-      "resources": {},
-      "local_directory": "C:\\Users\\Julian\\Desktop\\Cursos\\Cursos Github\\Predictive-maintenance\\smac3_output\\dask-scratch-space\\worker-waeqbikr",
-      "name": 5,
-      "nthreads": 1,
-      "memory_limit": 1705349529,
-      "last_seen": 1738815735.9779618,
-      "services": {
-        "dashboard": 55509
-      },
-      "metrics": {
-        "task_counts": {},
-        "bandwidth": {
-          "total": 100000000,
-          "workers": {},
-          "types": {}
-        },
-        "digests_total_since_heartbeat": {},
-        "managed_bytes": 0,
-        "spilled_bytes": {
-          "memory": 0,
-          "disk": 0
-        },
-        "transfer": {
-          "incoming_bytes": 0,
-          "incoming_count": 0,
-          "incoming_count_total": 0,
-          "outgoing_bytes": 0,
-          "outgoing_count": 0,
-          "outgoing_count_total": 0
-        },
-        "event_loop_interval": 0.02,
-        "cpu": 0.0,
-        "memory": 66449408,
-        "time": 1738815735.3337522,
-        "host_net_io": {
-          "read_bps": 1269.5003772832567,
-          "write_bps": 675.0026396286585
-        },
-        "host_disk_io": {
-          "read_bps": 3899905.159014165,
-          "write_bps": 323406.7692841015
-        }
-      },
-      "status": "running",
-      "nanny": "tcp://127.0.0.1:55450"
+      "nanny": "tcp://127.0.0.1:55691"
     }
   }
 }

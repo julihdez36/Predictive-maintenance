@@ -155,7 +155,7 @@ plt.show()
 df.criticality_ceramics # Criticalidad por estudios previos
 df.eens_kwh # riesgo que implica cesar la prestación del servicio
 
-df_final = df.drop(columns = ['criticality_ceramics','eens_kwh'])
+df_final = df#.drop(columns = ['criticality_ceramics','eens_kwh'])
 df_final.columns
 
 ###################################################################
@@ -210,6 +210,6 @@ df_final['network_km_lt'] = df_final['network_km_lt'].str.replace(',', '').astyp
 
 df_final['burned_transformers'].value_counts()
 
-df_final.to_csv('Data\df_entrenamiento.csv', index=False)  
+df_final.to_csv('Data\df_entrenamiento_2.csv', index=False)  
 
 
