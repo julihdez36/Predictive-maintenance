@@ -81,7 +81,8 @@ def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None, scaler=None):
 # --------------------------------------------
 # 4. Arquitectura de la Red Neuronal y Funciones de Pérdida
 # --------------------------------------------
-def focal_loss(alpha=0.25, gamma=2.0):
+
+def focal_loss(alpha=0.5, gamma=2.5):
     """
     Función de pérdida focal optimizada para datos desbalanceados.
     
@@ -119,7 +120,7 @@ def focal_loss(alpha=0.25, gamma=2.0):
 
 def create_model(best_config, input_dim):
     """
-    Crea y compila un modelo Keras con regularización optimizada y técnicas para mejorar la generalización.
+    Crea y compila un modelo Keras con la configuración dada.
     """
     model = Sequential()
     num_layers = best_config['num_layers']
@@ -128,78 +129,87 @@ def create_model(best_config, input_dim):
     l1_val = best_config.get('l1', 0.0) if best_config.get('use_l1', False) else 0.0
     l2_val = best_config.get('l2', 0.0) if best_config.get('use_l2', False) else 0.0
     regularizer = tf.keras.regularizers.l1_l2(l1=l1_val, l2=l2_val)
-
+    
     for i in range(num_layers):
         units = best_config[f"units_{i+1}"]
         activation = best_config[f"activation_{i+1}"]
-
+        
         if i == 0:
             model.add(Dense(units, kernel_regularizer=regularizer, input_shape=(input_dim,), use_bias=False))
         else:
             model.add(Dense(units, kernel_regularizer=regularizer, use_bias=False))
-
+            
         model.add(BatchNormalization())
         model.add(Activation(activation))
-
-        # Mover Dropout antes de BatchNormalization en algunas configuraciones puede ser mejor
+        
         if best_config["dropout"] > 0:
             model.add(Dropout(best_config["dropout"]))
-
+    
     # Capa de salida
     model.add(Dense(1, activation='sigmoid'))
-
-    # Optimización
+    
     lr = best_config['learning_rate']
     optimizers = {
         'adam': Adam(learning_rate=lr),
         'rmsprop': RMSprop(learning_rate=lr),
-        'sgd': SGD(learning_rate=lr, momentum=0.9, nesterov=True)  # Añadir momentum si usa SGD
+        'sgd': SGD(learning_rate=lr, momentum=0.9, nesterov=True)
     }
     optimizer = optimizers.get(best_config['optimizer'], Adam(learning_rate=lr))
-
+    
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(alpha=0.25, gamma=2.0),  # Asegurar que focal loss está bien ajustada
+        loss=focal_loss(alpha=0.5, gamma=2.5),  # Valores ajustados
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
-
     return model
+
+
+# -------------------------------
+# 4.1. Callback: Scheduler de Learning Rate
+# -------------------------------
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+    monitor='val_auc_pr',  # O puedes usar 'val_loss' u otra métrica
+    factor=0.5,
+    patience=3,
+    min_lr=1e-6,
+    verbose=1
+)
 
 
 # --------------------------------------------
 # 5. Funciones Auxiliares para Evaluación
 # --------------------------------------------
 def find_best_threshold(y_true, y_pred):
-    """
-    Encuentra el umbral que maximiza el F1 score a partir de la curva de precisión-recall.
-    """
     precision, recall, thresholds = precision_recall_curve(y_true, y_pred)
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
     return thresholds[np.nanargmax(f1_scores)]
 
-global_history = []  # Lista global para almacenar los history
-global_thresholds = []  # Lista global para almacenar los umbrales
+global_history = []   # Para almacenar historiales de entrenamiento
+global_thresholds = []  # Para almacenar umbrales
 
 def objective_function(config, seed, budget):
-    global global_history, global_thresholds  # Accedemos a las listas globales
     kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     auc_pr_scores, thresholds_all_folds, history_all_folds = [], [], []
-
+    
     for train_idx, val_idx in kfold.split(X_train_full, y_train_full):
         X_train_raw, y_train_raw = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx]
         X_val_raw, y_val_raw = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx]
-
+        
         X_train_scaled, y_train_bal, X_val_scaled, _ = preprocesar_datos(X_train_raw, y_train_raw, X_val_raw)
-
+        
         model = create_model(config, input_dim=X_train_scaled.shape[1])
-
+        
+        # Cálculo de pesos para las clases (opcional)
         class_weight = {
             0: len(y_train_bal) / (2 * sum(y_train_bal == 0)),
             1: len(y_train_bal) / (2 * sum(y_train_bal == 1))
         }
-
-        callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
-
+        
+        callbacks = [
+            tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
+            reduce_lr  # Se agrega el scheduler de LR
+        ]
+        
         history = model.fit(
             X_train_scaled, y_train_bal,
             validation_data=(X_val_scaled, y_val_raw),
@@ -209,24 +219,20 @@ def objective_function(config, seed, budget):
             class_weight=class_weight,
             callbacks=callbacks
         )
-
+        
         y_val_pred = model.predict(X_val_scaled, verbose=0).ravel()
         auc_pr = average_precision_score(y_val_raw, y_val_pred)
         auc_pr_scores.append(auc_pr)
-
+        
         best_threshold = find_best_threshold(y_val_raw, y_val_pred)
         thresholds_all_folds.append(best_threshold)
-
-        # Guardamos el historial del entrenamiento
+        
         history_all_folds.append(history.history)
-
-    # Guardamos los history y thresholds en listas globales
+    
     global_history.append({"config": config, "history": history_all_folds})
-    global_thresholds.append(np.mean(thresholds_all_folds))  # Almacenar el threshold promedio
-
-    return 1 - np.mean(auc_pr_scores)  # Solo devolver el valor que SMAC espera minimizar
-
-
+    global_thresholds.append(np.mean(thresholds_all_folds))
+    
+    return 1 - np.mean(auc_pr_scores)
 
 # --------------------------------------------
 # 6. Espacio de Búsqueda de Hiperparámetros
@@ -295,37 +301,33 @@ def run_bohb_with_smac():
 # 8. Entrenamiento Final y Evaluación
 # --------------------------------------------
 def entrenar_modelo_final(best_config, X_train_full, y_train_full):
-    """
-    Entrena el modelo final utilizando la mejor configuración encontrada y retorna
-    el modelo, el escalador y el umbral óptimo basado en la curva Precision-Recall.
-    """
     X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
         X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
     )
     
-    # Balanceo del conjunto de entrenamiento
     smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_split, y_train_split)
     
-    # Escalado de características
     scaler = RobustScaler()
     X_train_scaled = scaler.fit_transform(X_train_bal)
     X_val_scaled = scaler.transform(X_val_split)
     
-    # Creación y entrenamiento del modelo
     model = create_model(best_config, X_train_scaled.shape[1])
+    
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+        reduce_lr  # Se añade el scheduler
+    ]
+    
     model.fit(
         X_train_scaled, y_train_bal,
         validation_data=(X_val_scaled, y_val_split),
         epochs=100,
         batch_size=best_config["batch_size"],
         verbose=1,
-        callbacks=[tf.keras.callbacks.EarlyStopping(
-            monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'
-        )]
+        callbacks=callbacks
     )
     
-    # Cálculo del umbral óptimo basado en la curva Precision-Recall
     y_val_pred = model.predict(X_val_scaled).ravel()
     best_threshold = find_best_threshold(y_val_split, y_val_pred)
     
@@ -366,17 +368,21 @@ if __name__ == "__main__":
     X_test_scaled = scaler.transform(X_test)
     evaluar_modelo(final_model, X_test_scaled, y_test, threshold)
     
-
-# --------------------------------------------
-# 10. Registro del modelo
-# --------------------------------------------
-        
-# guardemos configuracion
-best_config_dict = best_config.get_dictionary()
-
-with open('hiperparametros.json', 'w') as f:
-    json.dump(best_config_dict, f, indent=4)
+    # --------------------------------------------
+    # 10. Registro del modelo y la configuración
+    # --------------------------------------------
     
-# guardar el modelo final
-final_model.save('modelo_fitted.h5') 
-joblib.dump(scaler, 'scaler.pkl')
+    # Convertir best_config a diccionario, según el objeto
+    if hasattr(best_config, 'get_dictionary'):
+        best_config_dict = best_config.get_dictionary()
+    else:
+        best_config_dict = best_config  # Asumir que ya es un diccionario
+
+    # Verificar que los datos sean serializables a JSON
+    # Si hay algún objeto complejo, es posible que necesites convertirlo a un formato básico (p. ej., str)
+    with open('hiperparametros.json', 'w') as f:
+        json.dump(best_config_dict, f, indent=4)
+        
+    # Guardar el modelo final y el escalador
+    final_model.save('modelo_fitted.h5')
+    joblib.dump(scaler, 'scaler.pkl')
