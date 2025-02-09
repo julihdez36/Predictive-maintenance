@@ -333,7 +333,9 @@ def objective_function(config, seed, budget):
             callbacks=callbacks
         )
         
-        fold_histories.append(history.history)
+        # Convertir history a un formato serializable
+        fold_histories.append({k: list(map(float, v)) for k, v in history.history.items()})
+        
         
         # Evaluar el AUC-PR en el fold de validación
         y_val_pred = model.predict(X_val_scaled, verbose=0).ravel()
