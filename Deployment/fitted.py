@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import RobustScaler
@@ -281,9 +282,9 @@ def run_bohb_with_smac():
     scenario = Scenario(
         configspace=get_configspace(),
         deterministic=True,
-        n_trials=300,
+        n_trials=500, #aumento
         min_budget=5,
-        max_budget=50,
+        max_budget=70, #aumento
         n_workers=4
     )
     
@@ -355,34 +356,128 @@ def evaluar_modelo(model, X_test, y_test, threshold):
 
 
 # --------------------------------------------
-# 9. Ejecución Principal
+# 9. Funciones de ejecución
 # --------------------------------------------
-if __name__ == "__main__":
-    # Se ejecuta la optimización de hiperparámetros
-    best_config = run_bohb_with_smac()
 
-    # Entrenamiento final con la mejor configuración
-    final_model, scaler, threshold = entrenar_modelo_final(best_config, X_train_full, y_train_full)
+def optimizar_hiperparametros(X_train_full, y_train_full):
+    """
+    Ejecuta la optimización de hiperparámetros utilizando SMAC y guarda la mejor configuración.
+    
+    Parámetros:
+        X_train_full (pd.DataFrame): Datos de entrenamiento.
+        y_train_full (pd.Series): Etiquetas de entrenamiento.
+    
+    Retorna:
+        dict: Mejor configuración de hiperparámetros.
+    """
+    # Ejecutar la optimización con SMAC
+    best_config = run_bohb_with_smac()
+    
+    # Guardar la mejor configuración en un archivo JSON
+    if hasattr(best_config, 'get_dictionary'):
+        best_config_dict = best_config.get_dictionary()
+    else:
+        best_config_dict = best_config  # Asumir que ya es un diccionario
+    
+    with open('hiperparametros.json', 'w') as f:
+        json.dump(best_config_dict, f, indent=4)
+    
+    print("Optimización completada. La mejor configuración se ha guardado en 'hiperparametros.json'.")
+    return best_config_dict
+
+
+# Entrenamiento del modelo
+
+def entrenar_modelo(best_config, X_train_full, y_train_full):
+    """
+    Entrena un modelo utilizando la mejor configuración de hiperparámetros.
+    
+    Parámetros:
+        best_config (dict): Mejor configuración de hiperparámetros.
+        X_train_full (pd.DataFrame): Datos de entrenamiento.
+        y_train_full (pd.Series): Etiquetas de entrenamiento.
+    
+    Retorna:
+        model (tf.keras.Model): Modelo entrenado.
+        scaler (RobustScaler): Escalador ajustado.
+        threshold (float): Umbral óptimo para clasificación.
+    """
+    # Dividir los datos en entrenamiento y validación
+    X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+        X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
+    )
+    
+    # Balancear los datos con SMOTETomek
+    smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
+    X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_split, y_train_split)
+    
+    # Escalar los datos
+    scaler = RobustScaler()
+    X_train_scaled = scaler.fit_transform(X_train_bal)
+    X_val_scaled = scaler.transform(X_val_split)
+    
+    # Crear el modelo con la mejor configuración
+    model = create_model(best_config, X_train_scaled.shape[1])
+    
+    # Callbacks para el entrenamiento
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+        reduce_lr  # Scheduler de tasa de aprendizaje
+    ]
+    
+    # Entrenar el modelo
+    model.fit(
+        X_train_scaled, y_train_bal,
+        validation_data=(X_val_scaled, y_val_split),
+        epochs=100,
+        batch_size=best_config["batch_size"],
+        verbose=1,
+        callbacks=callbacks
+    )
+    
+    # Encontrar el mejor umbral para clasificación
+    y_val_pred = model.predict(X_val_scaled).ravel()
+    best_threshold = find_best_threshold(y_val_split, y_val_pred)
+    
+    return model, scaler, best_threshold
+
+# --------------------------------------------
+# 9. Ejecución principal
+# --------------------------------------------
+
+# Optimizar hiperparámetros
+if __name__ == "__main__":
+    # Fase 1: Optimización de hiperparámetros
+    print("Iniciando optimización de hiperparámetros...")
+    best_config = optimizar_hiperparametros(X_train_full, y_train_full)
+    print("Optimización completada. Mejor configuración guardada en 'hiperparametros.json'.")
+
+# Entrenar modelo
+
+
+def cargar_configuracion(ruta_archivo):
+    """
+    Carga la configuración de hiperparámetros desde un archivo JSON.
+    
+    Parámetros:
+        ruta_archivo (str): Ruta al archivo JSON que contiene la configuración.
+    
+    Retorna:
+        dict: Configuración de hiperparámetros.
+    """
+    with open(ruta_archivo, 'r') as f:
+        config = json.load(f)
+    return config
+
+if __name__ == "__main__":
+    # Fase 2: Entrenamiento del modelo con la mejor configuración
+    print("Cargando la mejor configuración y entrenando el modelo...")
+    ruta_config = 'Angel/hiperparametros_mas.json'  # Ruta al archivo JSON con la configuración
+    best_config = cargar_configuracion(ruta_config)  # Función para cargar la configuración
+    final_model, scaler, threshold = entrenar_modelo(best_config, X_train_full, y_train_full)
     
     # Evaluación en el conjunto de test
     X_test_scaled = scaler.transform(X_test)
     evaluar_modelo(final_model, X_test_scaled, y_test, threshold)
     
-    # --------------------------------------------
-    # 10. Registro del modelo y la configuración
-    # --------------------------------------------
-    
-    # Convertir best_config a diccionario, según el objeto
-    if hasattr(best_config, 'get_dictionary'):
-        best_config_dict = best_config.get_dictionary()
-    else:
-        best_config_dict = best_config  # Asumir que ya es un diccionario
 
-    # Verificar que los datos sean serializables a JSON
-    # Si hay algún objeto complejo, es posible que necesites convertirlo a un formato básico (p. ej., str)
-    with open('hiperparametros.json', 'w') as f:
-        json.dump(best_config_dict, f, indent=4)
-        
-    # Guardar el modelo final y el escalador
-    final_model.save('modelo_fitted.h5')
-    joblib.dump(scaler, 'scaler.pkl')
