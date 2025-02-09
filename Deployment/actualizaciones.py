@@ -557,7 +557,6 @@ print("La matriz de confusión se ha guardado en 'matriz_confusion.json'.")
 # -------------------------------------------------------------------
 # 5. Guardar el historial de entrenamiento (global_history)
 # -------------------------------------------------------------------
-# Es importante asegurarse de que los objetos dentro de global_history sean serializables.
 with open("global_history.json", "w") as f:
     json.dump(global_history, f, indent=4)
 print("El historial global se ha guardado en 'global_history.json'.")
