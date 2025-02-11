@@ -70,11 +70,12 @@ def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None,
     """
     # 1. Ajustar el escalador en los datos de entrenamiento sin balancear
     if scaler is None:
+        #scaler = RobustScaler()
         scaler = QuantileTransformer(output_distribution='normal', random_state=42)
         scaler.fit(X_train_raw)
 
     # 2. Aplicar SMOTETomek para balancear el conjunto de entrenamiento
-    smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
+    smote_tomek = SMOTETomek(sampling_strategy=1, random_state=42)
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_raw, y_train_raw)
 
     # 3. Escalar los datos balanceados
@@ -134,7 +135,7 @@ class OneCycleLR(tf.keras.callbacks.Callback):
 # --------------------------------------------
 # 6. Función de Pérdida Focal para Datos Desbalanceados
 # --------------------------------------------
-def focal_loss(alpha=0.5, gamma=2.5):
+def focal_loss(alpha=0.95, gamma=4):
     """
     Implementa la función de pérdida focal, que reduce el peso de ejemplos fáciles
     y se enfoca en los ejemplos difíciles, ayudando a mejorar la predicción de la
@@ -190,7 +191,7 @@ def create_model(best_config, input_dim):
     
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(alpha=0.9, gamma=4),
+        loss=focal_loss(alpha=0.95, gamma=5),
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
     return model
@@ -206,6 +207,26 @@ def find_best_threshold(y_true, y_pred):
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
     return thresholds[np.nanargmax(f1_scores)]
 
+# def find_best_threshold(y_true, y_pred, min_precision=0.5):
+#     """
+#     Encuentra el umbral que maximiza el recall, asegurando una precisión mínima.
+#     """
+#     precisions, recalls, thresholds = precision_recall_curve(y_true, y_pred)
+    
+#     # Asegúrate de que las dimensiones coincidan
+#     precisions = precisions[:-1]  # Elimina el último valor de precisions y recalls
+#     recalls = recalls[:-1]
+    
+#     # Filtra los umbrales que cumplen con la precisión mínima
+#     viable_thresholds = thresholds[precisions >= min_precision]
+    
+#     # Si no hay umbrales viables, devuelve el umbral por defecto (0.5)
+#     if len(viable_thresholds) == 0:
+#         return 0.5
+    
+#     # Devuelve el umbral que maximiza el recall
+#     return viable_thresholds[np.argmax(recalls[precisions >= min_precision])]
+
 # --------------------------------------------
 # 12. Entrenamiento Final del Modelo con la Mejor Configuración
 # --------------------------------------------
@@ -220,9 +241,10 @@ def entrenar_modelo(best_config, X_train_full, y_train_full):
     )
     
     # Aplicar SMOTETomek y preprocesar con QuantileTransformer
-    smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
+    smote_tomek = SMOTETomek(sampling_strategy=1, random_state=42)
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_split, y_train_split)
     
+    #scaler = RobustScaler()
     scaler = QuantileTransformer(output_distribution='normal', random_state=42)
     X_train_scaled = scaler.fit_transform(X_train_bal)
     X_val_scaled = scaler.transform(X_val_split)
@@ -340,9 +362,9 @@ X_train_final, y_train_bal, X_val_final, scaler, pca = preprocesar_datos(
 # Hiperparámetros modelo PCA
 hiperparametrospca = {
     'activation_1': 'swish',
-    'batch_size': 32,
+    'batch_size': 32, #probar cambios
     'dropout': 0.2561936143454,
-    'learning_rate': 0.0013331697203,
+    'learning_rate': 0.0013331697203, # probas cambios
     'num_layers': 7,
     'optimizer': 'Nadam', # 'adam'
     'units_1': 148,
@@ -406,27 +428,32 @@ hiperparametros2 = {
   'units_6': 14,
 }
 
+
+# --------------------------------------------
+# Aquitectura PCA
+# --------------------------------------------
+
 # Crear el modelo utilizando la dimensionalidad resultante tras PCA
-model = create_model(hiperparametros, input_dim=X_train_final.shape[1])
+modelpca = create_model(hiperparametrospca, input_dim=X_train_final.shape[1])
 
 # Configurar callbacks, incluyendo OneCycleLR y EarlyStopping (asegúrate de tener definida la clase OneCycleLR)
 callbacks = [
     tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
-    OneCycleLR(max_lr=hiperparametros['learning_rate'] * 10, epochs=100)
+    OneCycleLR(max_lr=hiperparametrospca['learning_rate'] * 10, epochs=100)
 ]
 
 # Entrenar el modelo
-history = model.fit(
+history = modelpca.fit(
     X_train_final, y_train_bal,
     validation_data=(X_val_final, y_val_split),
     epochs=100,
-    batch_size=hiperparametros["batch_size"],
+    batch_size=hiperparametrospca["batch_size"],
     verbose=1,
     callbacks=callbacks
 )
 
 # Encontrar el umbral óptimo basado en el conjunto de validación
-y_val_pred = model.predict(X_val_final).ravel()
+y_val_pred = modelpca.predict(X_val_final).ravel()
 best_threshold = find_best_threshold(y_val_split, y_val_pred)
 
 # --- Evaluación Final en el Conjunto de Prueba ---
@@ -436,4 +463,315 @@ best_threshold = find_best_threshold(y_val_split, y_val_pred)
 X_test_scaled = scaler.transform(X_test)
 X_test_final = pca.transform(X_test_scaled)
 
-evaluar_modelo(model, X_test_final, y_test, best_threshold)
+evaluar_modelo(modelpca, X_test_final, y_test, best_threshold)
+
+# --------------------------------------------
+# Aquitectura 1
+# --------------------------------------------
+
+# Crear el modelo utilizando la dimensionalidad resultante tras PCA
+model1 = create_model(hiperparametros1, input_dim=X_train_final.shape[1])
+
+# Configurar callbacks, incluyendo OneCycleLR y EarlyStopping (asegúrate de tener definida la clase OneCycleLR)
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+    OneCycleLR(max_lr=hiperparametrospca['learning_rate'] * 10, epochs=100)
+]
+
+# Entrenar el modelo
+history = model1.fit(
+    X_train_final, y_train_bal,
+    validation_data=(X_val_final, y_val_split),
+    epochs=100,
+    batch_size=hiperparametrospca["batch_size"],
+    verbose=1,
+    callbacks=callbacks
+)
+
+# Encontrar el umbral óptimo basado en el conjunto de validación
+y_val_pred = model1.predict(X_val_final).ravel()
+best_threshold = find_best_threshold(y_val_split, y_val_pred)
+
+# --- Evaluación Final en el Conjunto de Prueba ---
+
+# Recordemos que el conjunto de prueba NO se balancea con SMOTETomek;
+# solo se transforma usando el mismo scaler y PCA ajustados.
+X_test_scaled = scaler.transform(X_test)
+X_test_final = pca.transform(X_test_scaled)
+
+evaluar_modelo(model1, X_test_final, y_test, .6)
+# --------------------------------------------
+# Aquitectura 2
+# --------------------------------------------
+
+# Crear el modelo utilizando la dimensionalidad resultante tras PCA
+model2 = create_model(hiperparametros2, input_dim=X_train_final.shape[1])
+
+# Configurar callbacks, incluyendo OneCycleLR y EarlyStopping (asegúrate de tener definida la clase OneCycleLR)
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+    OneCycleLR(max_lr=hiperparametrospca['learning_rate'] * 10, epochs=100)
+]
+
+# Entrenar el modelo
+history = model2.fit(
+    X_train_final, y_train_bal,
+    validation_data=(X_val_final, y_val_split),
+    epochs=100,
+    batch_size=hiperparametrospca["batch_size"],
+    verbose=1,
+    callbacks=callbacks
+)
+
+# Encontrar el umbral óptimo basado en el conjunto de validación
+y_val_pred = model2.predict(X_val_final).ravel()
+best_threshold = find_best_threshold(y_val_split, y_val_pred)
+
+# --- Evaluación Final en el Conjunto de Prueba ---
+
+# Recordemos que el conjunto de prueba NO se balancea con SMOTETomek;
+# solo se transforma usando el mismo scaler y PCA ajustados.
+X_test_scaled = scaler.transform(X_test)
+X_test_final = pca.transform(X_test_scaled)
+
+evaluar_modelo(model2, X_test_final, y_test, best_threshold)
+
+
+plt.hist(y_val_pred, bins=50)
+plt.title("Distribución de probabilidades predichas")
+plt.show()
+
+
+# --------------------------------------------
+# ADASYN (para sobremuestrear la clase minoritaria) y RandomUnderSampler (para ajustar la cantidad de la clase mayoritaria)
+# --------------------------------------------
+
+def preprocesar_datos(X_train_raw, y_train_raw, X_val_raw=None,
+                      aplicar_pca=True, n_componentes=0.95,
+                      scaler=None, pca=None):
+    """
+    Preprocesa los datos de entrenamiento y validación aplicando:
+      1. Balanceo de clases con ADASYN y RandomUnderSampler (sólo en entrenamiento).
+      2. Escalado con QuantileTransformer (u otro escalador si se prefiere).
+      3. Reducción de dimensionalidad con PCA (opcional).
+    
+    Parámetros:
+        - X_train_raw: Datos de entrenamiento sin procesar.
+        - y_train_raw: Etiquetas de entrenamiento.
+        - X_val_raw: Datos de validación sin procesar (opcional).
+        - aplicar_pca: Si True, aplica PCA.
+        - n_componentes: Porcentaje o número de componentes a retener en PCA.
+        - scaler: Objeto QuantileTransformer preajustado (opcional).
+        - pca: Objeto PCA preajustado (opcional).
+    
+    Retorna:
+        - X_train_final: Datos de entrenamiento preprocesados.
+        - y_train_bal: Etiquetas de entrenamiento balanceadas.
+        - X_val_final: Datos de validación preprocesados (None si no se proporciona X_val_raw).
+        - scaler: Objeto QuantileTransformer ajustado.
+        - pca: Objeto PCA ajustado (None si aplicar_pca es False).
+    """
+    # 1. Ajustar el escalador en los datos de entrenamiento sin balancear
+    if scaler is None:
+        # Puedes cambiar a RobustScaler u otro escalador si lo prefieres
+        scaler = QuantileTransformer(output_distribution='normal', random_state=42)
+        scaler.fit(X_train_raw)
+
+    # 2. Balancear el conjunto de entrenamiento usando ADASYN y RandomUnderSampler
+    from imblearn.over_sampling import ADASYN
+    from imblearn.under_sampling import RandomUnderSampler
+    from imblearn.pipeline import Pipeline
+
+    # Define el sobremuestreo y el submuestreo; ajusta los ratios según convenga
+    over = ADASYN(sampling_strategy=0.8, random_state=42)
+    under = RandomUnderSampler(sampling_strategy=1, random_state=42)
+    pipeline = Pipeline(steps=[('o', over), ('u', under)])
+    X_train_bal, y_train_bal = pipeline.fit_resample(X_train_raw, y_train_raw)
+
+    # 3. Escalar los datos balanceados
+    X_train_scaled = scaler.transform(X_train_bal)
+    X_val_scaled = scaler.transform(X_val_raw) if X_val_raw is not None else None
+
+    # 4. Aplicar PCA (ajustado únicamente en el conjunto de entrenamiento)
+    if aplicar_pca:
+        if pca is None:
+            pca = PCA(n_components=n_componentes)
+            pca.fit(X_train_scaled)
+        X_train_final = pca.transform(X_train_scaled)
+        X_val_final = pca.transform(X_val_scaled) if X_val_scaled is not None else None
+    else:
+        X_train_final = X_train_scaled
+        X_val_final = X_val_scaled
+        pca = None
+
+    return X_train_final, y_train_bal, X_val_final, scaler, pca
+
+
+def entrenar_modelo(best_config, X_train_full, y_train_full):
+    """
+    Entrena el modelo final usando la mejor configuración.
+    Se separa un 10% de los datos para validación (usando train_test_split) para monitorear el EarlyStopping.
+    """
+    X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+        X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
+    )
+    
+    # Balancear el conjunto de entrenamiento con ADASYN y RandomUnderSampler
+    from imblearn.over_sampling import ADASYN
+    from imblearn.under_sampling import RandomUnderSampler
+    from imblearn.pipeline import Pipeline
+
+    over = ADASYN(sampling_strategy=1, random_state=42)
+    under = RandomUnderSampler(sampling_strategy=1, random_state=42)
+    pipeline = Pipeline(steps=[('o', over), ('u', under)])
+    X_train_bal, y_train_bal = pipeline.fit_resample(X_train_split, y_train_split)
+    
+    # Escalado: puedes cambiar a otro escalador si lo deseas
+    scaler = QuantileTransformer(output_distribution='normal', random_state=42)
+    X_train_scaled = scaler.fit_transform(X_train_bal)
+    X_val_scaled = scaler.transform(X_val_split)
+    
+    model = create_model(best_config, input_dim=X_train_scaled.shape[1])
+    
+    # Callbacks: EarlyStopping y OneCycleLR para un entrenamiento de 100 épocas
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+        OneCycleLR(max_lr=best_config['learning_rate'] * 10, epochs=100)
+    ]
+    
+    model.fit(
+        X_train_scaled, y_train_bal,
+        validation_data=(X_val_scaled, y_val_split),
+        epochs=100,
+        batch_size=best_config["batch_size"],
+        verbose=1,
+        callbacks=callbacks
+    )
+    
+    # Se busca el umbral óptimo en la validación
+    y_val_pred = model.predict(X_val_scaled).ravel()
+    best_threshold = find_best_threshold(y_val_split, y_val_pred)
+    
+    return model, scaler, best_threshold
+
+
+# Supongamos que ya tienes cargados tus datos:
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento_2.csv'
+df_final = pd.read_csv(url)
+X = df_final.drop(columns=['burned_transformers'])
+y = df_final['burned_transformers']
+
+# Dividir en entrenamiento y prueba
+X_train_full, X_test, y_train_full, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
+)
+
+# Separar una parte del entrenamiento para validación
+X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+    X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
+)
+
+# Preprocesar los datos: se aplica ADASYN, escalado y PCA en el conjunto de entrenamiento
+X_train_final, y_train_bal, X_val_final, scaler, pca = preprocesar_datos(
+    X_train_split, y_train_split, X_val_raw=X_val_split,
+    aplicar_pca=True, n_componentes=0.95
+)
+
+
+# Crear el modelo utilizando la dimensionalidad resultante tras PCA
+modelpca = create_model(hiperparametrospca, input_dim=X_train_final.shape[1])
+
+# Configurar callbacks, incluyendo OneCycleLR y EarlyStopping (asegúrate de tener definida la clase OneCycleLR)
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=10, restore_best_weights=True, mode='max'),
+    OneCycleLR(max_lr=hiperparametrospca['learning_rate'] * 10, epochs=100)
+]
+
+# Entrenar el modelo
+history = modelpca.fit(
+    X_train_final, y_train_bal,
+    validation_data=(X_val_final, y_val_split),
+    epochs=100,
+    batch_size=hiperparametrospca["batch_size"],
+    verbose=1,
+    callbacks=callbacks
+)
+
+# Encontrar el umbral óptimo basado en el conjunto de validación
+y_val_pred = modelpca.predict(X_val_final).ravel()
+best_threshold = find_best_threshold(y_val_split, y_val_pred)
+
+# --- Evaluación Final en el Conjunto de Prueba ---
+
+# Recordemos que el conjunto de prueba NO se balancea con SMOTETomek;
+# solo se transforma usando el mismo scaler y PCA ajustados.
+X_test_scaled = scaler.transform(X_test)
+X_test_final = pca.transform(X_test_scaled)
+
+evaluar_modelo(modelpca, X_test_final, y_test, best_threshold)
+
+# --------------------------------------------
+# Probando con folds
+# --------------------------------------------
+
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import average_precision_score, recall_score
+import numpy as np
+
+# Configurar K-Fold
+n_splits = 5  # Número de folds
+skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+# Listas para almacenar métricas y modelos
+auc_pr_scores = []
+recall_scores = []
+models = []
+
+# Iterar sobre los folds
+for fold, (train_index, val_index) in enumerate(skf.split(X_train_full, y_train_full)):
+    print(f"\nEntrenando fold {fold + 1}/{n_splits}")
+    
+    # Dividir los datos en entrenamiento y validación para este fold
+    X_train_fold, X_val_fold = X_train_full.iloc[train_index], X_train_full.iloc[val_index]
+    y_train_fold, y_val_fold = y_train_full.iloc[train_index], y_train_full.iloc[val_index]
+    
+    # Preprocesar los datos (SMOTETomek, escalado, PCA)
+    X_train_final, y_train_bal, X_val_final, scaler, pca = preprocesar_datos(
+        X_train_fold, y_train_fold, X_val_raw=X_val_fold,
+        aplicar_pca=True, n_componentes=0.95
+    )
+    
+    # Crear y entrenar el modelo con los mismos hiperparámetros
+    model = create_model(hiperparametrospca, input_dim=X_train_final.shape[1])
+    history = model.fit(
+        X_train_final, y_train_bal,
+        validation_data=(X_val_final, y_val_fold),
+        epochs=100,
+        batch_size=hiperparametrospca["batch_size"],
+        verbose=1,
+        callbacks=callbacks
+    )
+    
+    # Encontrar el umbral óptimo para este fold
+    y_val_pred = model.predict(X_val_final).ravel()
+    best_threshold = find_best_threshold(y_val_fold, y_val_pred, min_precision=0.5)
+    
+    # Evaluar el modelo en el conjunto de validación
+    y_val_pred_binary = (y_val_pred >= best_threshold).astype(int)
+    auc_pr = average_precision_score(y_val_fold, y_val_pred)
+    recall = recall_score(y_val_fold, y_val_pred_binary)
+    
+    # Almacenar métricas y modelo
+    auc_pr_scores.append(auc_pr)
+    recall_scores.append(recall)
+    models.append(model)
+    
+    print(f"Fold {fold + 1} - AUC-PR: {auc_pr:.4f}, Recall: {recall:.4f}")
+
+# Calcular métricas promedio
+mean_auc_pr = np.mean(auc_pr_scores)
+mean_recall = np.mean(recall_scores)
+print(f"\nMétricas promedio - AUC-PR: {mean_auc_pr:.4f}, Recall: {mean_recall:.4f}")
+
+
+
