@@ -1,5 +1,6 @@
 #################################################################
-##### Exploration 
+# Consolidación de datos
+##################################################################
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,22 +29,97 @@ df20['year']= 2020
 
 print(f'Dimesión de los df: {df19.shape, df20.shape}') #((15873, 17), (15873, 17))
 
-df19.info()
-
-df19.burned_transformers.value_counts()
-
-print(df19.burned_transformers.value_counts())
-
-print(df20.burned_transformers.value_counts())
-
 df = pd.concat([df19,df20], ignore_index= True)
 print(df.shape) # (31746, 17)
 df.sample(3)
 
-
-# Carga final del conjunto de datos
+#################################################################
+# Conjunto de datos concatenado
+##################################################################
 
 df.to_csv('Data\df.csv', index=False)  # Guarda el DataFrame en un archivo CSV, sin incluir el índice
+
+
+###################################################################
+# Conjunto de datos para el entrenamiento
+###################################################################
+
+df.columns
+df.burning_rate.value_counts()
+
+df['failed'] = (df['burned_transformers'] + df['burning_rate']) > 0
+df['failed'] = df['failed'].astype(int)
+df.failed.value_counts()
+
+df.failed.value_counts()[0] / df.failed.value_counts()[1] # 2.4855072463768115
+
+
+df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
+
+
+df_entrenamiento_final = df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
+df_entrenamiento_final.columns
+
+
+# Separaremos usuarios en: hogares, comercios, industria y oficial
+
+df['client_type'].value_counts()
+
+df_entrenamiento_final['client_type'] = df_entrenamiento_final['client_type'].apply(
+    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
+)
+
+# One-hot encoding 
+df_entrenamiento_final = pd.get_dummies(df_entrenamiento_final, columns=['client_type'])
+
+df_entrenamiento_final.client_type_OFFICIAL.sum() # 132
+df_entrenamiento_final.client_type_INDUSTRIAL.sum() # 238
+df_entrenamiento_final.client_type_COMMERCIAL.sum() #676
+df_entrenamiento_final.client_type_HOUSEHOLD.sum() #30700
+
+# Tipo de instalación
+
+df_entrenamiento_final.installation_type.value_counts()
+
+df_entrenamiento_final['installation_type'] = df_entrenamiento_final['installation_type'].replace({
+    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
+})
+
+df_entrenamiento_final['installation_type'] = df_entrenamiento_final['installation_type'].replace({
+        'POLE': 1, # EXPOSED
+        'POLE WITH ANTI-FRAUD NET': 1,
+        'TORRE METALICA': 1,
+        'EN H': 1,
+        'CABINA': 0, # PROTECTED
+        'PAD MOUNTED': 0, 
+        'MACRO WITHOUT ANTI-FRAUD NET': 0,
+        'OTROS': 0})
+        
+        
+df_entrenamiento_final['installation_type'].value_counts() # 1:28306, 0:3440
+df_entrenamiento_final['failed'].value_counts() # 0:22638, 1:9108
+
+df_entrenamiento_final.groupby('installation_type')['failed'].sum()
+
+
+# Tipado de variables
+
+df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].str.replace(',', '').astype(float)
+
+
+df_entrenamiento_final.info()
+
+###################################################################
+
+# Variable dependiente del modelo
+# Problema de clasificación binario
+
+df_entrenamiento_final['failed'].value_counts()
+
+
+# Aquí voy!
+df_final.to_csv('Data\df_entrenamiento_2.csv', index=False)  
+
 
 
 ##################################################################
@@ -148,68 +224,6 @@ plt.show()
 # Saving .eps
 # plt.savefig('transformadores_quemados.eps', format='eps', bbox_inches='tight', dpi=300)
 
-###################################################################
-# Variables que considero omitir
 
-
-df.criticality_ceramics # Criticalidad por estudios previos
-df.eens_kwh # riesgo que implica cesar la prestación del servicio
-
-df_final = df#.drop(columns = ['criticality_ceramics','eens_kwh'])
-df_final.columns
-
-###################################################################
-
-# Variables a ajustar
-
-# Diferenciaremos hogares, comercios, industria y oficial
-
-df_final['client_type'] = df['client_type'].apply(
-    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
-)
-
-# One-hot encoding 
-df_final = pd.get_dummies(df_final, columns=['client_type'])
-
-df_final.columns
-
-# Tipo de instalación
-# Podemos explorar una combinación one-hot para variables categóricas
-
-df_final.installation_type.value_counts()
-
-
-df_final['installation_type'] = df['installation_type'].replace({
-    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
-})
-
-# Agrupación de categorías con baja frecuencia en "OTROS"
-
-
-df_final['installation_type'] = df_final['installation_type'].replace({
-    'CABINA': 'OTROS',
-    'TORRE METALICA': 'OTROS',
-    'PAD MOUNTED': 'OTROS'
-})
-
-
-# One-Hot Encoding
-
-df_final = pd.get_dummies(df_final, columns=['installation_type'], prefix='installation')
-
-
-# Tipado de variables
-
-df_final['network_km_lt'] = df_final['network_km_lt'].str.replace(',', '').astype(float)
-
-
-###################################################################
-
-# Variable dependiente del modelo
-# Problema de clasificación binario
-
-df_final['burned_transformers'].value_counts()
-
-df_final.to_csv('Data\df_entrenamiento_2.csv', index=False)  
 
 
