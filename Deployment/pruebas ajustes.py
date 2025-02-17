@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import QuantileTransformer
-from sklearn.decomposition import PCA
 from sklearn.metrics import (
     average_precision_score, classification_report, precision_score,
     recall_score, f1_score, PrecisionRecallDisplay, precision_recall_curve, confusion_matrix
@@ -27,9 +26,6 @@ from imblearn.combine import SMOTETomek
 tf.random.set_seed(42)
 np.random.seed(42)
 
-# tf.config.threading.set_inter_op_parallelism_threads(4)
-# tf.config.threading.set_intra_op_parallelism_threads(4)
-
 # --------------------------------------------
 # Función para transformar datos usando el encoder y aplicar SMOTETomek en el espacio latente
 # --------------------------------------------
@@ -37,11 +33,6 @@ def preprocesar_datos_con_autoencoder(X_train_raw, y_train_raw, encoder, aplicar
     """
     Transforma los datos de entrada usando el encoder entrenado y, opcionalmente,
     aplica SMOTETomek en el espacio latente.
-
-    - X_train_raw: Datos de entrada escalados.
-    - y_train_raw: Etiquetas originales.
-    - encoder: Modelo encoder entrenado.
-    - aplicar_smote: Si True, aplica SMOTETomek para balancear las clases.
     """
     # Transformar los datos a la representación latente
     X_train_encoded = encoder.predict(X_train_raw)
@@ -56,53 +47,76 @@ def preprocesar_datos_con_autoencoder(X_train_raw, y_train_raw, encoder, aplicar
     return X_train_encoded, y_train_bal
 
 # --------------------------------------------
-# Función para crear y entrenar el Autoencoder
+# Función para crear y entrenar el Autoencoder complejo
 # --------------------------------------------
-def crear_autoencoder(input_dim, encoding_dim, regularizacion=0.001):
+def crear_autoencoder(input_dim, encoding_dim, dropout_rate=0.2, regularizacion=1e-3):
     """
-    Crea un autoencoder simple con regularización L2.
-
-    - input_dim: Dimensión de la entrada.
-    - encoding_dim: Dimensión del espacio latente.
-    - regularizacion: Factor de regularización L2.
-    """
-    input_layer = Input(shape=(input_dim,))
-
-    # Capa de codificación con regularización L2 LEAKY
-    encoded = Dense(encoding_dim, activation='relu',
-                    kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(input_layer)
-    # encoded = Dense(encoding_dim, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(input_layer)
-    # encoded = LeakyReLU(alpha=0.01)(encoded)  # LeakyReLU con alpha ajustable
-
+    Crea un autoencoder más complejo con varias capas (encoder y decodificador).
     
-    # Capa de decodificación con regularización L2
+    Parámetros:
+      - input_dim: Dimensión de la entrada.
+      - encoding_dim: Dimensión del espacio latente.
+      - dropout_rate: Tasa de dropout para evitar sobreajuste.
+      - regularizacion: Factor de regularización L2.
+      
+    Retorna:
+      - autoencoder: Modelo completo de autoencoder.
+      - encoder: Modelo que mapea la entrada a la representación latente.
+    """
+    input_layer = Input(shape=(input_dim,), name='input')
+    
+    # ---- Encoder ----
+    x = Dense(256, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(input_layer)
+    x = BatchNormalization()(x)
+    x = Activation('swish')(x)
+    x = Dropout(dropout_rate)(x)
+    
+    x = Dense(128, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(x)
+    x = BatchNormalization()(x)
+    x = LeakyReLU(alpha=0.01)(x)
+    x = Dropout(dropout_rate)(x)
+    
+    # Capa de codificación final
+    x = Dense(encoding_dim, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(x)
+    encoded = BatchNormalization()(x)
+    encoded = LeakyReLU(alpha=0.01)(encoded)
+    
+    # ---- Decodificador ----
+    x = Dense(128, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(encoded)
+    x = BatchNormalization()(x)
+    x = Activation('swish')(x)
+    x = Dropout(dropout_rate)(x)
+    
+    x = Dense(256, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(x)
+    x = BatchNormalization()(x)
+    x = Activation('swish')(x)
+    x = Dropout(dropout_rate)(x)
+    
     decoded = Dense(input_dim, activation='sigmoid',
-                    kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(encoded)
-
-    autoencoder = Model(input_layer, decoded)
-    encoder = Model(input_layer, encoded)
-
-    autoencoder.compile(optimizer='nadam', loss= tf.keras.losses.LogCosh()) #loss='mse'
+                    kernel_regularizer=tf.keras.regularizers.l2(regularizacion),
+                    name='decoded')(x)
+    
+    autoencoder = Model(input_layer, decoded, name='autoencoder_complejo')
+    encoder = Model(input_layer, encoded, name='encoder_complejo')
+    
+    autoencoder.compile(optimizer='nadam', loss=tf.keras.losses.LogCosh())
     return autoencoder, encoder
 
-
-##### Entrenar modelo #################333
-
+# --------------------------------------------
+# Entrenamiento del Autoencoder
+# --------------------------------------------
 def entrenar_autoencoder(X_train, X_val, encoding_dim, epochs=100, batch_size=32):
     """
     Entrena el autoencoder con los datos escalados y devuelve el modelo entrenado.
     """
     input_dim = X_train.shape[1]
     autoencoder, encoder = crear_autoencoder(input_dim, encoding_dim)
-
     autoencoder.fit(X_train, X_train,
                     validation_data=(X_val, X_val),
                     epochs=epochs,
                     batch_size=batch_size,
                     verbose=1)
     return autoencoder, encoder
-
-
 
 # --------------------------------------------
 # Callbacks y funciones auxiliares para el clasificador
@@ -176,9 +190,6 @@ def create_model(best_config, input_dim):
     )
     return model
 
-
-
-
 def find_best_threshold(y_true, y_pred):
     precision, recall, thresholds = precision_recall_curve(y_true, y_pred)
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
@@ -192,7 +203,7 @@ def entrenar_modelo_con_autoencoder(best_config, X_train_full, y_train_full, enc
     Flujo de entrenamiento:
       - Se separa un 10% para validación.
       - Se escalan los datos sin balancear.
-      - Se entrena el autoencoder sobre los datos escalados.
+      - Se entrena el autoencoder complejo sobre los datos escalados.
       - Se transforma la representación latente y se aplica SMOTETomek en el espacio latente (opcional).
       - Se entrena el clasificador sobre la representación latente balanceada.
     """
@@ -207,7 +218,7 @@ def entrenar_modelo_con_autoencoder(best_config, X_train_full, y_train_full, enc
     X_train_scaled = scaler.transform(X_train_split)
     X_val_scaled = scaler.transform(X_val_split)
     
-    # Entrenar el autoencoder en datos escalados
+    # Entrenar el autoencoder complejo en datos escalados
     autoencoder, encoder = entrenar_autoencoder(X_train_scaled, X_val_scaled, encoding_dim,
                                                  epochs=50, batch_size=32)
     
@@ -284,7 +295,6 @@ X_train_full, X_test, y_train_full, y_test = train_test_split(
 )
 
 # Definir hiperparámetros para el clasificador (ajustar según sea necesario)
-
 hiperparametrospca = {
     'activation_1': 'swish',
     'batch_size': 32, #probar cambios
@@ -309,24 +319,20 @@ hiperparametrospca = {
     'units_7': 233,
 }
 
-
 # Definir la dimensión del espacio latente del autoencoder
-encoding_dim = 64 #es el que mejor rendimiento ha mostrado
+encoding_dim = 64  # es el que mejor rendimiento ha mostrado
 
 # Entrenar el clasificador usando el autoencoder para extraer representaciones latentes
 model, scaler, encoder, best_threshold = entrenar_modelo_con_autoencoder(hiperparametrospca, X_train_full, y_train_full, encoding_dim)
 
 # Evaluar en el conjunto de prueba
 evaluar_modelo_con_autoencoder(model, encoder, scaler, X_test, y_test, best_threshold)
-best_threshold
+print("Umbral óptimo:", best_threshold)
 
 # Utiliza el encoder y el modelo para obtener las predicciones en el conjunto de prueba
 predicciones_latentes = encoder.predict(scaler.transform(X_test))
 predicciones_probabilidades = model.predict(predicciones_latentes)
-predicciones_etiquetas = (predicciones_probabilidades > best_threshold).astype(int)  # Ajusta el umbral si es necesario
+predicciones_etiquetas = (predicciones_probabilidades > .62).astype(int)  # Ajusta el umbral si es necesario
 
-
-matriz_confusion = confusion_matrix(y_test, predicciones_etiquetas); matriz_confusion
-
-
-
+matriz_confusion = confusion_matrix(y_test, predicciones_etiquetas)
+print(matriz_confusion)
