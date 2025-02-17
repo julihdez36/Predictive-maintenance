@@ -113,13 +113,10 @@ df_entrenamiento_final.info()
 
 ###################################################################
 
-# Variable dependiente del modelo
-# Problema de clasificación binario
-
 df_entrenamiento_final['failed'].value_counts()
 # 0    22638
 # 1     9108
-# Aquí voy!
+
 df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)  
 
 
