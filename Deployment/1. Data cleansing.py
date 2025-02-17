@@ -13,6 +13,7 @@ df19 = pd.read_csv(raw19)
 raw20 = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/Dataset_Year_2020.csv'
 df20 = pd.read_csv(raw20)
 
+
 new_names = ['location', 'power', 'self_protection', 
  'avg_earth_ddt', 'max_earth_ddt', 
  'burning_rate', 'criticality_ceramics', 
@@ -32,6 +33,8 @@ print(f'Dimesión de los df: {df19.shape, df20.shape}') #((15873, 17), (15873, 1
 df = pd.concat([df19,df20], ignore_index= True)
 print(df.shape) # (31746, 17)
 df.sample(3)
+
+df.isna().sum()
 
 #################################################################
 # Conjunto de datos concatenado
@@ -54,20 +57,18 @@ df.failed.value_counts()
 df.failed.value_counts()[0] / df.failed.value_counts()[1] # 2.4855072463768115
 
 
-df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
-
-
 df_entrenamiento_final = df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
 df_entrenamiento_final.columns
 
 
 # Separaremos usuarios en: hogares, comercios, industria y oficial
 
-df['client_type'].value_counts()
 
 df_entrenamiento_final['client_type'] = df_entrenamiento_final['client_type'].apply(
     lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
 )
+
+df_entrenamiento_final ['client_type'].value_counts()
 
 # One-hot encoding 
 df_entrenamiento_final = pd.get_dummies(df_entrenamiento_final, columns=['client_type'])
@@ -95,7 +96,7 @@ df_entrenamiento_final['installation_type'] = df_entrenamiento_final['installati
         'MACRO WITHOUT ANTI-FRAUD NET': 0,
         'OTROS': 0})
         
-        
+       
 df_entrenamiento_final['installation_type'].value_counts() # 1:28306, 0:3440
 df_entrenamiento_final['failed'].value_counts() # 0:22638, 1:9108
 
@@ -104,9 +105,10 @@ df_entrenamiento_final.groupby('installation_type')['failed'].sum()
 
 # Tipado de variables
 
-df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].str.replace(',', '').astype(float)
+df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(str).str.replace(',', '', regex=True)
+df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(float)
 
-
+df_entrenamiento_final.isna().sum()
 df_entrenamiento_final.info()
 
 ###################################################################
@@ -115,8 +117,8 @@ df_entrenamiento_final.info()
 # Problema de clasificación binario
 
 df_entrenamiento_final['failed'].value_counts()
-
-
+# 0    22638
+# 1     9108
 # Aquí voy!
 df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)  
 
@@ -130,11 +132,9 @@ df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)
 # df.sample(2)
 # df.columns
 
-
-
 # Visualizaciones de interés
 
-# Configuración del estilo para gráficos IEEE
+# Configuración del estilo 
 plt.rcParams.update({
     "text.usetex": True,  # Usar LaTeX para renderizar texto
     "font.family": "serif",  # Usar una fuente serif (como Times New Roman)
