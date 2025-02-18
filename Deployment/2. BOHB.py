@@ -253,10 +253,12 @@ def run_bohb_with_smac():
         json.dump(best_config_dict, f, indent=4)
     return best_config_dict
 
-best_config = run_bohb_with_smac()
 
-best_config_dict = best_config.get_dictionary()
+if __name__ == "__main__":
+    best_config = run_bohb_with_smac()
 
-with open("hiperparametros.json", "w") as f:
-    json.dump(best_config_dict, f, indent=4)
-print("La configuración de hiperparámetros se ha guardado en 'hiperparametros.json'.")
+    best_config_dict = best_config.get_dictionary()
+    
+    with open("hiperparametros.json", "w") as f:
+        json.dump(best_config_dict, f, indent=4)
+    print("La configuración de hiperparámetros se ha guardado en 'hiperparametros.json'.")
