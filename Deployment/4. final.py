@@ -15,8 +15,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import datetime
-import sys
 import json
 
 from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -43,24 +41,24 @@ from imblearn.combine import SMOTETomek
 # --------------------------------------------
 tf.random.set_seed(42)
 np.random.seed(42)
-tf.config.threading.set_inter_op_parallelism_threads(10)
-tf.config.threading.set_intra_op_parallelism_threads(10)
+# tf.config.threading.set_inter_op_parallelism_threads(10)
+# tf.config.threading.set_intra_op_parallelism_threads(10)
 
 # --------------------------------------------
 # 3. Carga y Preparación de Datos
 # --------------------------------------------
-def cargar_datos(url):
-    """
-    Carga los datos y los divide en conjunto de entrenamiento y prueba.
-    """
-    df_final = pd.read_csv(url)
-    X = df_final.drop(columns=['burned_transformers'])
-    y = df_final['burned_transformers']
-    return train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# URL de los datos
+tf.random.set_seed(42)
+np.random.seed(42)
+
 url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento_final.csv'
-X_train_full, X_test, y_train_full, y_test = cargar_datos(url)
+df_final = pd.read_csv(url)
+X = df_final.drop(columns=['failed'])
+y = df_final['failed']
+
+# Dividir en entrenamiento y prueba (para la optimización usaremos solo el entrenamiento)
+X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+
 
 # --------------------------------------------
 # 4. Preprocesamiento de Datos con QuantileTransformer y SMOTETomek
@@ -135,7 +133,7 @@ class OneCycleLR(tf.keras.callbacks.Callback):
 # --------------------------------------------
 # 6. Función de Pérdida Focal para Datos Desbalanceados
 # --------------------------------------------
-def focal_loss(alpha=0.5, gamma=2.5):
+def focal_loss(alpha=0.95, gamma= 5):
     """
     Implementa la función de pérdida focal para enfocarse en ejemplos difíciles.
     """
@@ -155,7 +153,7 @@ def focal_loss(alpha=0.5, gamma=2.5):
 # --------------------------------------------
 def create_model(best_config, input_dim):
     """
-    Crea y compila el modelo Keras según la configuración de hiperparámetros.
+    Crea el clasificador final basado en la configuración y la dimensión de entrada.
     """
     model = Sequential()
     num_layers = best_config['num_layers']
@@ -180,15 +178,17 @@ def create_model(best_config, input_dim):
     optimizers = {
         'adam': Adam(learning_rate=lr),
         'rmsprop': RMSprop(learning_rate=lr),
-        'sgd': SGD(learning_rate=lr, momentum=0.9, nesterov=True)
+        'sgd': SGD(learning_rate=lr, momentum=0.9, nesterov=True),
+        'nadam': Nadam(learning_rate=lr)
     }
-    optimizer = optimizers.get(best_config['optimizer'].lower(), Adam(learning_rate=lr))
+    optimizer = optimizers.get(best_config['optimizer'], Adam(learning_rate=lr))
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(alpha=0.5, gamma=2.5),
+        loss=focal_loss(alpha=0.95, gamma=5),
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
     return model
+
 
 # --------------------------------------------
 # 8. Función para Buscar el Umbral Óptimo Basado en F1-score
@@ -277,10 +277,7 @@ def objective_function(config, seed, budget):
         model = create_model(config, input_dim=input_dim)
         
         # Cálculo de pesos de clases para compensar el desbalance
-        class_weight = {
-            0: len(y_train_bal) / (2 * sum(y_train_bal == 0)),
-            1: len(y_train_bal) / (2 * sum(y_train_bal == 1))
-        }
+        class_weights = {0: 1, 1: 10}
         
         callbacks = [
             tf.keras.callbacks.EarlyStopping(monitor='val_auc_pr', patience=5, restore_best_weights=True),
@@ -293,8 +290,8 @@ def objective_function(config, seed, budget):
             epochs=int(budget),
             batch_size=config["batch_size"],
             verbose=0,
-            class_weight=class_weight,
-            callbacks=callbacks
+            callbacks=callbacks,
+            class_weight= class_weights            
         )
         
         # Serializar el historial para guardarlo
@@ -354,7 +351,7 @@ def entrenar_modelo_con_pca(best_config, X_train_full, y_train_full, variance_th
         X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
     )
     
-    smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
+    smote_tomek = SMOTETomek(sampling_strategy=1, random_state=42)
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_split, y_train_split)
     
     scaler = QuantileTransformer(output_distribution='normal', random_state=42)
@@ -471,72 +468,11 @@ if __name__ == "__main__":
     print("Optimización completada. Mejor configuración encontrada:")
     print(best_config)
 
-    # Fase 2: Entrenamiento final del modelo con la mejor configuración (usando PCA)
-    print("Entrenando el modelo final con la mejor configuración...")
-    final_model, scaler, pca, threshold = entrenar_modelo_con_pca(best_config, X_train_full, y_train_full, variance_threshold=0.95)
-    
-    # Evaluación en el conjunto de prueba
-    evaluar_modelo_con_pca(final_model, pca, scaler, X_test, y_test, threshold)
-    print("Best threshold:", threshold)
-    
-    # Visualización del historial de entrenamiento para cada configuración evaluada
-    for i, config_history in enumerate(global_history):
-        print(f"\nConfiguración {i + 1}:")
-        print(f"Hiperparámetros: {config_history['config']}")
-        print(f"AUC-PR promedio: {config_history['mean_auc_pr']:.4f}")
-        for fold_idx, fold_history in enumerate(config_history['history']):
-            print(f"\nFold {fold_idx + 1}:")
-            plot_training_history(fold_history)
-    
-    # Calcular y graficar la matriz de confusión final
-    X_test_scaled = scaler.transform(X_test)
-    X_test_reducido = pca.transform(X_test_scaled)
-    y_pred_prob = final_model.predict(X_test_reducido).ravel()
-    y_pred = (y_pred_prob >= threshold).astype(int)
-    plot_confusion_matrix(y_test, y_pred, classes=["No quemado", "Quemado"])
-    
     # -------------------------------------------------------------------
     # Guardar Resultados y Artefactos del Experimento
     # -------------------------------------------------------------------
     # 1. Guardar la configuración de hiperparámetros
+    best_config_dict = best_config.get_dictionary()
     with open("hiperparametros.json", "w") as f:
-        json.dump(best_config, f, indent=4)
+        json.dump(best_config_dict, f, indent=4)
     print("La configuración de hiperparámetros se ha guardado en 'hiperparametros.json'.")
-    
-    # 2. Guardar el modelo entrenado (formato HDF5)
-    final_model.save("final_model.h5")
-    print("El modelo entrenado se ha guardado en 'final_model.h5'.")
-    
-    # 3. Guardar los resultados de evaluación (métricas)
-    resultados_evaluacion = {
-        "auc_pr": average_precision_score(y_test, y_pred_prob),
-        "precision": precision_score(y_test, y_pred),
-        "recall": recall_score(y_test, y_pred),
-        "f1": f1_score(y_test, y_pred)
-    }
-    with open("resultados_evaluacion.json", "w") as f:
-        json.dump(resultados_evaluacion, f, indent=4)
-    print("Los resultados de evaluación se han guardado en 'resultados_evaluacion.json'.")
-    
-    # 4. Guardar la matriz de confusión
-    with open("matriz_confusion.json", "w") as f:
-        json.dump(confusion_matrix(y_test, y_pred).tolist(), f, indent=4)
-    print("La matriz de confusión se ha guardado en 'matriz_confusion.json'.")
-    
-    # 5. Guardar el historial global de entrenamiento
-    with open("global_history.json", "w") as f:
-        json.dump(global_history, f, indent=4)
-    print("El historial global se ha guardado en 'global_history.json'.")
-    
-    # 6. Guardar metadatos del experimento
-    metadatos_experimento = {
-        "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "semilla": 42,
-        "versiones": {
-            "tensorflow": tf.__version__,
-            "python": sys.version
-        }
-    }
-    with open("metadatos_experimento.json", "w") as f:
-        json.dump(metadatos_experimento, f, indent=4)
-    print("Los metadatos del experimento se han guardado en 'metadatos_experimento.json'.")
