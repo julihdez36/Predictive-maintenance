@@ -71,11 +71,7 @@ def crear_autoencoder(input_dim, encoding_dim, regularizacion=0.001):
     # Capa de codificación con regularización L2 LEAKY
     encoded = Dense(encoding_dim, activation='relu',
                     kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(input_layer)
-    # encoded = Dense(encoding_dim, kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(input_layer)
-    # encoded = LeakyReLU(alpha=0.01)(encoded)  # LeakyReLU con alpha ajustable
-
-    
-    # Capa de decodificación con regularización L2
+  
     decoded = Dense(input_dim, activation='sigmoid',
                     kernel_regularizer=tf.keras.regularizers.l2(regularizacion))(encoded)
 
@@ -273,10 +269,12 @@ def evaluar_modelo_con_autoencoder(model, encoder, scaler, X_test, y_test, best_
 # Pipeline Completo de Entrenamiento y Evaluación
 # --------------------------------------------
 # Cargar datos
-url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento_2.csv'
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento_final.csv'
 df_final = pd.read_csv(url)
-X = df_final.drop(columns=['burned_transformers','eens_kwh'])
-y = df_final['burned_transformers']
+X = df_final.drop(columns=['failed'])
+y = df_final['failed']
+
+X.isna().sum()
 
 # Dividir en entrenamiento y prueba
 X_train_full, X_test, y_train_full, y_test = train_test_split(
