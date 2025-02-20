@@ -119,7 +119,7 @@ def create_model(best_config, input_dim):
     optimizer = optimizers.get(best_config['optimizer'].lower(), Adam(learning_rate=lr))
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(alpha=0.5, gamma=2.5),
+        loss=focal_loss(alpha= 0.95, gamma= 5),
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
     return model
@@ -135,7 +135,7 @@ def entrenar_modelo_con_pca(best_config, X_train_full, y_train_full, variance_th
         X_train_full, y_train_full, test_size=0.1, stratify=y_train_full, random_state=42
     )
     
-    smote_tomek = SMOTETomek(sampling_strategy=0.8, random_state=42)
+    smote_tomek = SMOTETomek(sampling_strategy=1, random_state=42) ###################################
     X_train_bal, y_train_bal = smote_tomek.fit_resample(X_train_split, y_train_split)
     
     scaler = QuantileTransformer(output_distribution='normal', random_state=42)
@@ -155,7 +155,7 @@ def entrenar_modelo_con_pca(best_config, X_train_full, y_train_full, variance_th
         OneCycleLR(max_lr=best_config['learning_rate'] * 10, epochs=100)
     ]
     
-    class_weights = {0: 1, 1: 5}
+    class_weights = {0: 1, 1: 10}
     model.fit(
         X_train_reducido, y_train_final,
         validation_data=(X_val_reducido, y_val_split),
@@ -205,15 +205,25 @@ def plot_confusion_matrix(y_true, y_pred, classes, title='Matriz de Confusión',
     plt.xlabel('Etiqueta Predicha')
     plt.savefig("confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.show()
+    
+best_config = {
+    "activation_1": "tanh",
+    "batch_size": 32,
+    "dropout": 0.0540769997851,
+    "learning_rate": 0.0012889055447,
+    "num_layers": 3,
+    "optimizer": "rmsprop", 
+    "units_1": 11,
+    "use_l1": True,
+    "use_l2": True,
+    "activation_2": "swish",
+    "activation_3": "relu",
+    "units_2": 225,
+    "units_3": 27
+  }
 
 # 10. Ejecución Principal
 if __name__ == "__main__":
-    # Cargar la mejor configuración guardada (convertida en diccionario)
-    with open("hiperparametros.json", "r") as f:
-        best_config = json.load(f)
-    print("Mejor configuración cargada:")
-    print(best_config)
-    
     # Entrenar el modelo final
     final_model, scaler, pca, threshold = entrenar_modelo_con_pca(best_config, X_train_full, y_train_full, variance_threshold=0.95)
     print("Umbral óptimo obtenido:", threshold)
@@ -237,7 +247,7 @@ if __name__ == "__main__":
         json.dump(resultados_evaluacion, f, indent=4)
     print("Resultados de evaluación guardados en 'resultados_evaluacion.json'.")
     
-    final_model.save("final_model.h5")
+    final_model.save("Modelos/final_model.h5")
     print("El modelo final se ha guardado en 'final_model.h5'.")
     
     metadatos_experimento = {
@@ -248,6 +258,6 @@ if __name__ == "__main__":
             "python": sys.version
         }
     }
-    with open("metadatos_experimento.json", "w") as f:
+    with open("Modelos/metadatos_experimento.json", "w") as f:
         json.dump(metadatos_experimento, f, indent=4)
     print("Metadatos del experimento guardados en 'metadatos_experimento.json'.")

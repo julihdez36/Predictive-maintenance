@@ -1,0 +1,15 @@
+{
+    "activation_1": "tanh",
+    "batch_size": 32,
+    "dropout": 0.0540769997851,
+    "learning_rate": 0.0012889055447,
+    "num_layers": 3,
+    "optimizer": "rmsprop",
+    "units_1": 11,
+    "use_l1": False,
+    "use_l2": False,
+    "activation_2": "swish",
+    "activation_3": "relu",
+    "units_2": 225,
+    "units_3": 27,
+  }
