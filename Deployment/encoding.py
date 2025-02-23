@@ -283,36 +283,52 @@ X_train_full, X_test, y_train_full, y_test = train_test_split(
 
 # Definir hiperparámetros para el clasificador (ajustar según sea necesario)
 
-hiperparametrospca = {
-    'activation_1': 'swish',
-    'batch_size': 32, #probar cambios
-    'dropout': 0.2561936143454,
-    'learning_rate': 0.0013331697203, # probas cambios
-    'num_layers': 7,
-    'optimizer': 'Nadam', # 'adam'
-    'units_1': 148,
-    'use_l1': True,
-    'use_l2': True,
-    'activation_2': 'swish',
-    'activation_3': 'tanh',
-    'activation_4': 'swish',
-    'activation_5': 'swish',
-    'activation_6': 'elu',
-    'activation_7': 'tanh',
-    'units_2': 171,
-    'units_3': 181,
-    'units_4': 119,
-    'units_5': 142,
-    'units_6': 128,
-    'units_7': 233,
-}
+# hiperparametrospca = {
+#     'activation_1': 'swish',
+#     'batch_size': 32, #probar cambios
+#     'dropout': 0.2561936143454,
+#     'learning_rate': 0.0013331697203, # probas cambios
+#     'num_layers': 7,
+#     'optimizer': 'Nadam', # 'adam'
+#     'units_1': 148,
+#     'use_l1': True,
+#     'use_l2': True,
+#     'activation_2': 'swish',
+#     'activation_3': 'tanh',
+#     'activation_4': 'swish',
+#     'activation_5': 'swish',
+#     'activation_6': 'elu',
+#     'activation_7': 'tanh',
+#     'units_2': 171,
+#     'units_3': 181,
+#     'units_4': 119,
+#     'units_5': 142,
+#     'units_6': 128,
+#     'units_7': 233,
+# }
+
+hiperparametros = {
+    "activation_1": "tanh",
+    "batch_size": 32,
+    "dropout": 0.0540769997851,
+    "learning_rate": 0.0012889055447,
+    "num_layers": 3,
+    "optimizer": "rmsprop", 
+    "units_1": 11,
+    "use_l1": True,
+    "use_l2": True,
+    "activation_2": "swish",
+    "activation_3": "relu",
+    "units_2": 225,
+    "units_3": 27
+  }
 
 
 # Definir la dimensión del espacio latente del autoencoder
-encoding_dim = 64 #es el que mejor rendimiento ha mostrado
+encoding_dim = 12 #es el que mejor rendimiento ha mostrado
 
 # Entrenar el clasificador usando el autoencoder para extraer representaciones latentes
-model, scaler, encoder, best_threshold = entrenar_modelo_con_autoencoder(hiperparametrospca, X_train_full, y_train_full, encoding_dim)
+model, scaler, encoder, best_threshold = entrenar_modelo_con_autoencoder(hiperparametros, X_train_full, y_train_full, encoding_dim)
 
 # Evaluar en el conjunto de prueba
 evaluar_modelo_con_autoencoder(model, encoder, scaler, X_test, y_test, best_threshold)
