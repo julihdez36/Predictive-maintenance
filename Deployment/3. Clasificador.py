@@ -261,3 +261,5 @@ if __name__ == "__main__":
     with open("Modelos/metadatos_experimento.json", "w") as f:
         json.dump(metadatos_experimento, f, indent=4)
     print("Metadatos del experimento guardados en 'metadatos_experimento.json'.")
+
+
