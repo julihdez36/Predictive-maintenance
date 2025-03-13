@@ -33,6 +33,9 @@ y = df_final['failed']
 
 X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
+
+round(df_final.failed.value_counts(normalize = False), 4)
+
 # 3. Funciones de Preprocesamiento y PCA
 def preprocesar_datos_con_pca(X_train_scaled, y_train, pca, aplicar_smote=False):
     X_train_reducido = pca.transform(X_train_scaled)
@@ -236,25 +239,34 @@ if __name__ == "__main__":
 # Graficos
 ##########################################################
 
+import os
+
+
+# Crear una carpeta para guardar los gráficos si no existe
+output_dir = "Graficos"
+os.makedirs(output_dir, exist_ok=True)
+
 sns.set_style("whitegrid")
 plt.rcParams.update({'font.size': 12, 'axes.labelsize': 14, 'axes.titlesize': 16})
 
-## 1. CURVA ROC
-def graficar_roc(y_true, y_pred_prob):
+
+## 1. ROC Curve
+def plot_roc_curve(y_true, y_pred_prob, filename="roc_curve.png"):
     fpr, tpr, _ = roc_curve(y_true, y_pred_prob)
     roc_auc = auc(fpr, tpr)
 
     plt.figure(figsize=(7, 6))
     plt.plot(fpr, tpr, color='blue', lw=2, label=f'AUC = {roc_auc:.3f}')
     plt.plot([0, 1], [0, 1], color='gray', linestyle='--')
-    plt.xlabel("Tasa de Falsos Positivos (FPR)")
-    plt.ylabel("Tasa de Verdaderos Positivos (TPR)")
-    plt.title("Curva ROC")
+    plt.xlabel("False Positive Rate (FPR)")
+    plt.ylabel("True Positive Rate (TPR)")
+    plt.title("ROC Curve")
     plt.legend(loc="lower right")
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
 
-## 2. CURVA PRECISION-RECALL
-def graficar_pr(y_true, y_pred_prob):
+## 2. Precision-Recall Curve
+def plot_precision_recall_curve(y_true, y_pred_prob, filename="pr_curve.png"):
     precision, recall, _ = precision_recall_curve(y_true, y_pred_prob)
     auc_pr = average_precision_score(y_true, y_pred_prob)
 
@@ -262,50 +274,117 @@ def graficar_pr(y_true, y_pred_prob):
     plt.plot(recall, precision, color='green', lw=2, label=f"AUC-PR = {auc_pr:.3f}")
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title("Curva Precision-Recall")
+    plt.title("Precision-Recall Curve")
     plt.legend(loc="upper right")
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
 
-## 3. MATRIZ DE CONFUSIÓN
-def graficar_matriz_confusion(y_true, y_pred):
+## 3. Confusion Matrix
+def plot_confusion_matrix(y_true, y_pred, filename="confusion_matrix.png"):
     cm = confusion_matrix(y_true, y_pred)
-    
+
     plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Negativo", "Positivo"], yticklabels=["Negativo", "Positivo"])
-    plt.xlabel("Predicción")
-    plt.ylabel("Real")
-    plt.title("Matriz de Confusión")
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", 
+                xticklabels=["Negative", "Positive"], 
+                yticklabels=["Negative", "Positive"])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title("Confusion Matrix")
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
 
-## 4. HISTOGRAMA DE PROBABILIDADES CON EL UMBRAL
-    
-def graficar_histograma_probabilidades(y_true, y_pred_prob, threshold):
+## 4. Histogram of Predicted Probabilities with Threshold
+def plot_probability_histogram(y_true, y_pred_prob, threshold, filename="probability_histogram.png"):
     plt.figure(figsize=(8, 6))
 
-    # Filtrar las probabilidades por clase
-    sns.histplot(y_pred_prob[y_true == 0], bins=20, kde=True, color="blue", label="Clase Negativa (0)", alpha=0.5)
-    sns.histplot(y_pred_prob[y_true == 1], bins=20, kde=True, color="orange", label="Clase Positiva (1)", alpha=0.5)
+    # Plot distributions for each class
+    sns.histplot(y_pred_prob[y_true == 0], bins=20, kde=True, color="blue", label="Negative Class (0)", alpha=0.5)
+    sns.histplot(y_pred_prob[y_true == 1], bins=20, kde=True, color="orange", label="Positive Class (1)", alpha=0.5)
 
-    # Línea del umbral
-    plt.axvline(threshold, color='red', linestyle='--', label=f'Umbral ({threshold:.2f})')
+    # Threshold line
+    plt.axvline(threshold, color='red', linestyle='--', label=f'Threshold ({threshold:.2f})')
 
-    # Configuración del gráfico
-    plt.xlabel("Probabilidad Predicha")
-    plt.ylabel("Frecuencia")
-    plt.title("Distribución de Probabilidades por Clase")
+    # Labels and title
+    plt.xlabel("Predicted Probability")
+    plt.ylabel("Frequency")
+    # plt.title("Probability Distribution by Class")
     plt.legend()
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
 
     
     
 
 # Ejecutar funciones
-graficar_roc(y_true, y_pred_prob)
-graficar_pr(y_true, y_pred_prob)
-graficar_matriz_confusion(y_true, y_pred)
-graficar_histograma_probabilidades(y_true, y_pred_prob, threshold)
+plot_roc_curve(y_true, y_pred_prob)
+plot_precision_recall_curve(y_true, y_pred_prob)
+plot_confusion_matrix(y_true, y_pred)
+plot_probability_histogram(y_true, y_pred_prob, threshold)
 
 
 print(classification_report(y_true, y_pred))
 
+def plot_roc_pr_curves(y_true, y_pred_prob, filename="roc_pr_curves.png"):
+    fpr, tpr, _ = roc_curve(y_true, y_pred_prob)
+    roc_auc = auc(fpr, tpr)
+
+    precision, recall, _ = precision_recall_curve(y_true, y_pred_prob)
+    auc_pr = average_precision_score(y_true, y_pred_prob)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))  # 1 fila, 2 columnas
+
+    # ROC Curve
+    axes[0].plot(fpr, tpr, color='blue', lw=2, label=f'AUC = {roc_auc:.3f}')
+    axes[0].plot([0, 1], [0, 1], color='gray', linestyle='--')
+    axes[0].set_xlabel("False Positive Rate (FPR)")
+    axes[0].set_ylabel("True Positive Rate (TPR)")
+    axes[0].set_title("ROC Curve")
+    axes[0].legend(loc="lower right")
+
+    # Precision-Recall Curve
+    axes[1].plot(recall, precision, color='green', lw=2, label=f"AUC-PR = {auc_pr:.3f}")
+    axes[1].set_xlabel("Recall")
+    axes[1].set_ylabel("Precision")
+    axes[1].set_title("Precision-Recall Curve")
+    axes[1].legend(loc="upper right")
+
+    plt.tight_layout()  # Ajustar diseño
+    plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
+    plt.show()
+
+plot_roc_pr_curves(y_true, y_pred_prob)
+
+
+#### Resultados aceptando un 10 y un 1% de falsos descubrimientos
+
+def ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.01):
+    # Calcular la curva Precision-Recall
+    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_prob)
+
+    # Calcular FDR (False Discovery Rate)
+    # FDR = FP / (FP + TP)
+    false_positives = (1 - precision) * np.sum(y_true == 0)  # Falsos positivos
+    true_positives = precision * np.sum(y_true == 1)         # Verdaderos positivos
+    fdr = false_positives / (false_positives + true_positives)
+
+    # Encontrar el umbral que minimiza FDR para el umbral deseado
+    # Buscamos el primer umbral donde la FDR es menor que el umbral tolerado (1% o 10%)
+    threshold_ajustado = thresholds[np.where(fdr <= fdr_threshold)[0][0]]
+
+    print(f"Umbral ajustado para FDR < {fdr_threshold*100}%: {threshold_ajustado:.3f}")
+    return threshold_ajustado
+
+# Ejemplo de uso
+threshold_1 = ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.01)
+threshold_10 = ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.10)
+
+
+def evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold, fdr_target):
+    y_pred = (y_pred_prob >= threshold).astype(int)
+    recall = recall_score(y_true, y_pred)
+    print(f"At FDR {fdr_target*100:.0f}%, the model detects {recall*100:.2f}% of failures.")
+    return recall
+
+recall_fdr_1 = evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold_1, 0.01)
+recall_fdr_10 = evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold_10, 0.10)
 
