@@ -357,34 +357,31 @@ plot_roc_pr_curves(y_true, y_pred_prob)
 
 #### Resultados aceptando un 10 y un 1% de falsos descubrimientos
 
-def ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.01):
-    # Calcular la curva Precision-Recall
-    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_prob)
 
-    # Calcular FDR (False Discovery Rate)
-    # FDR = FP / (FP + TP)
-    false_positives = (1 - precision) * np.sum(y_true == 0)  # Falsos positivos
-    true_positives = precision * np.sum(y_true == 1)         # Verdaderos positivos
-    fdr = false_positives / (false_positives + true_positives)
+def ajustar_umbral_con_fpr(y_true, y_pred_prob, fpr_threshold=0.01):
+    """
+    Encuentra el umbral de decisión para una tasa de falsas alarmas (FPR) dada.
 
-    # Encontrar el umbral que minimiza FDR para el umbral deseado
-    # Buscamos el primer umbral donde la FDR es menor que el umbral tolerado (1% o 10%)
-    threshold_ajustado = thresholds[np.where(fdr <= fdr_threshold)[0][0]]
+    Parámetros:
+    - y_true: Valores reales de la clase (0 o 1).
+    - y_pred_prob: Probabilidades de predicción del clasificador.
+    - fpr_threshold: Nivel de tasa de falsas alarmas deseado (ej. 0.01 para 1%).
 
-    print(f"Umbral ajustado para FDR < {fdr_threshold*100}%: {threshold_ajustado:.3f}")
-    return threshold_ajustado
+    Retorna:
+    - Umbral óptimo para la FPR especificada.
+    """
+    # Obtener la curva ROC
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred_prob)
+    
+    # Encontrar el umbral más bajo donde la FPR es menor o igual al valor especificado
+    idx = np.where(fpr <= fpr_threshold)[0][-1]  # Último índice donde FPR es aceptable
+    threshold_ajustado = thresholds[idx]
 
-# Ejemplo de uso
-threshold_1 = ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.01)
-threshold_10 = ajustar_umbral_con_fdr(y_true, y_pred_prob, fdr_threshold=0.10)
+    print(f"Umbral ajustado para FPR <= {fpr_threshold*100:.1f}%: {threshold_ajustado:.3f}")
+    print(f"Con este umbral, el clasificador detecta {tpr[idx]*100:.1f}% de los casos positivos.")
 
+    return threshold_ajustado, tpr[idx]  # Retornamos también la tasa de detección (TPR)
 
-def evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold, fdr_target):
-    y_pred = (y_pred_prob >= threshold).astype(int)
-    recall = recall_score(y_true, y_pred)
-    print(f"At FDR {fdr_target*100:.0f}%, the model detects {recall*100:.2f}% of failures.")
-    return recall
-
-recall_fdr_1 = evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold_1, 0.01)
-recall_fdr_10 = evaluate_at_fdr_threshold(y_true, y_pred_prob, threshold_10, 0.10)
-
+# Uso con las tasas deseadas:
+threshold_1, recall_1 = ajustar_umbral_con_fpr(y_true, y_pred_prob, fpr_threshold=0.01)
+threshold_10, recall_10 = ajustar_umbral_con_fpr(y_true, y_pred_prob, fpr_threshold=0.10)
