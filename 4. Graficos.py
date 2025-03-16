@@ -235,9 +235,8 @@ if __name__ == "__main__":
 
 
 
-##########################################################
-# Graficos
-##########################################################
+final_model.summary()
+
 
 import os
 
@@ -311,9 +310,6 @@ def plot_probability_histogram(y_true, y_pred_prob, threshold, filename="probabi
     plt.legend()
     plt.savefig(os.path.join(output_dir, filename), dpi=300, bbox_inches='tight')
     plt.show()
-
-    
-    
 
 # Ejecutar funciones
 plot_roc_curve(y_true, y_pred_prob)
