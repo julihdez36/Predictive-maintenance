@@ -40,12 +40,13 @@ df.isna().sum()
 # Conjunto de datos concatenado
 ##################################################################
 
-df.to_csv('Data\df.csv', index=False)  # Guarda el DataFrame en un archivo CSV, sin incluir el índice
+#df.to_csv('Data\df.csv', index=False)  # Guarda el DataFrame en un archivo CSV, sin incluir el índice
 
 
 ###################################################################
-# Conjunto de datos para el entrenamiento
+# Conjunto de datos para el entrenamiento 1
 ###################################################################
+
 
 df.columns
 df.burning_rate.value_counts()
@@ -54,12 +55,19 @@ df['failed'] = (df['burned_transformers'] + df['burning_rate']) > 0
 df['failed'] = df['failed'].astype(int)
 df.failed.value_counts()
 
+df.burned_transformers.value_counts()
+
 df.failed.value_counts()[0] / df.failed.value_counts()[1] # 2.4855072463768115
 
+df_quemas = df.drop(columns=['eens_kwh','year','failed'])
+df_quemas.columns
 
 df_entrenamiento_final = df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
 df_entrenamiento_final.columns
 
+########################################################################
+# Usuarios
+########################################################################
 
 # Separaremos usuarios en: hogares, comercios, industria y oficial
 
@@ -73,12 +81,28 @@ df_entrenamiento_final ['client_type'].value_counts()
 # One-hot encoding 
 df_entrenamiento_final = pd.get_dummies(df_entrenamiento_final, columns=['client_type'])
 
-df_entrenamiento_final.client_type_OFFICIAL.sum() # 132
-df_entrenamiento_final.client_type_INDUSTRIAL.sum() # 238
-df_entrenamiento_final.client_type_COMMERCIAL.sum() #676
-df_entrenamiento_final.client_type_HOUSEHOLD.sum() #30700
 
+# Solo con quemas
+
+
+df_quemas['client_type'] = df_quemas['client_type'].apply(
+    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
+)
+
+df_quemas['client_type'].value_counts()
+
+# One-hot encoding 
+df_quemas = pd.get_dummies(df_quemas, columns=['client_type'])
+
+df_quemas.client_type_OFFICIAL.sum() # 132
+df_quemas.client_type_INDUSTRIAL.sum() # 238
+df_quemas.client_type_COMMERCIAL.sum() #676
+df_quemas.client_type_HOUSEHOLD.sum() #30700
+
+########################################################################
 # Tipo de instalación
+########################################################################
+
 
 df_entrenamiento_final.installation_type.value_counts()
 
@@ -102,8 +126,38 @@ df_entrenamiento_final['failed'].value_counts() # 0:22638, 1:9108
 
 df_entrenamiento_final.groupby('installation_type')['failed'].sum()
 
+# Con quemas ####
 
+df_quemas.installation_type.value_counts()
+
+df_quemas['installation_type'] = df_quemas['installation_type'].replace({
+    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
+})
+
+df_quemas['installation_type'] = df_quemas['installation_type'].replace({
+        'POLE': 1, # EXPOSED
+        'POLE WITH ANTI-FRAUD NET': 1,
+        'TORRE METALICA': 1,
+        'EN H': 1,
+        'CABINA': 0, # PROTECTED
+        'PAD MOUNTED': 0, 
+        'MACRO WITHOUT ANTI-FRAUD NET': 0,
+        'OTROS': 0})
+        
+       
+df_quemas['installation_type'].value_counts() # 1:28306, 0:3440
+
+df_quemas.columns
+
+df_quemas['burned_transformers'].value_counts() # 0:30310, 1:1436
+
+df_quemas.groupby('installation_type')['burned_transformers'].sum()
+
+
+########################################################################
 # Tipado de variables
+########################################################################
+
 
 df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(str).str.replace(',', '', regex=True)
 df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(float)
@@ -111,134 +165,47 @@ df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'
 df_entrenamiento_final.isna().sum()
 df_entrenamiento_final.info()
 
-###################################################################
+
+# Con quemas
+
+df_quemas['network_km_lt'] = df_quemas['network_km_lt'].astype(str).str.replace(',', '', regex=True)
+df_quemas['network_km_lt'] = df_quemas['network_km_lt'].astype(float)
+
+df_quemas.isna().sum()
+df_quemas.info()
+
+
+
+
+
+
 
 df_entrenamiento_final['failed'].value_counts()
 # 0    22638
 # 1     9108
 
-df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)  
+df_quemas['burned_transformers'].value_counts() 
+
+# 0:30310
+# 1:1436
 
 
-##################################################################
-# Exploración de variables 
+df_entrenamiento_final.shape
+df_quemas.shape
 
-# url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df.csv'
-# df = pd.read_csv(url)
+########################################################################
+# Guardado de datos
+########################################################################
 
-# df.sample(2)
-# df.columns
-
-# Visualizaciones de interés
-
-# Configuración del estilo 
-plt.rcParams.update({
-    "text.usetex": True,  # Usar LaTeX para renderizar texto
-    "font.family": "serif",  # Usar una fuente serif (como Times New Roman)
-    "font.serif": ["Times New Roman"],  # Especificar Times New Roman
-    "font.size": 10,  # Tamaño de la fuente
-    "axes.titlesize": 10,  # Tamaño del título de los ejes
-    "axes.labelsize": 10,  # Tamaño de las etiquetas de los ejes
-    "xtick.labelsize": 8,  # Tamaño de las etiquetas del eje X
-    "ytick.labelsize": 8,  # Tamaño de las etiquetas del eje Y
-    "legend.fontsize": 8,  # Tamaño de la leyenda
-    "figure.titlesize": 10,  # Tamaño del título de la figura
-    "lines.linewidth": 1.5,  # Grosor de las líneas
-    "lines.markersize": 6,  # Tamaño de los marcadores
-    "grid.color": "gray",  # Color de la cuadrícula
-    "grid.linestyle": ":",  # Estilo de la cuadrícula
-    "grid.linewidth": 0.5,  # Grosor de la cuadrícula
-})
-
-df_entrenamiento_final.columns
-
-# Cantidad de fallas en transformadores por zona
-
-plt.figure(figsize=(8, 6)) 
-ax = sns.countplot(
-    data= df_entrenamiento_final,
-    x= 'location', 
-    hue= 'failed',  
-    palette="Greys", 
-    edgecolor="black",
-    linewidth=0.5
-)
-
-# Modificar el título y etiquetas
-plt.title("Fallas en transformadores por ubicación", fontsize=12, fontweight="bold")
-plt.xlabel("Ubicación", fontsize=10)
-plt.ylabel("Fallas en transformadores", fontsize=10)
-
-for container in ax.containers:
-    ax.bar_label(container, fmt='%d', label_type='edge', fontsize=8)
-
-handles, labels = ax.get_legend_handles_labels()
-new_labels = ['No fallo', 'Fallo']  # Nuevas etiquetas para la leyenda
-ax.legend(handles, new_labels, title="Estado del Transformador")
-
-ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7)
-
-plt.tight_layout()
-plt.show()
-
-# plt.savefig('fallos_año.eps', format='eps', bbox_inches='tight', dpi=300)
+df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)
+  
+df_quemas.to_csv('Data\df_quemas.csv', index=False)
 
 
 
-df_entrenamiento_final.groupby('installation_type')['failed'].sum()
 
-# Calcular proporciones de fallas y no fallas por tipo de instalación
-df_proporciones = (
-    df_entrenamiento_final
-    .groupby('installation_type')['failed']
-    .value_counts(normalize=True)
-    .unstack()
-)
 
-# Renombrar columnas para mayor claridad
-df_proporciones.columns = ['Protected', 'Exposed']
 
-# Convertir a formato largo para usar con Seaborn
-df_melted = df_proporciones.reset_index().melt(
-    id_vars='installation_type', 
-    var_name='Failure Status', 
-    value_name='Percentage'
-)
-
-# Mapear valores de instalación para etiquetas más claras
-df_melted['installation_type'] = df_melted['installation_type'].map({0: 'Protected', 1: 'Exposed'})
-
-# Crear el gráfico de barras apiladas
-plt.figure(figsize=(6, 5))
-ax = sns.barplot(
-    data=df_melted, 
-    x='installation_type',  
-    y='Percentage', 
-    hue='Failure Status', 
-    palette=["#4D4D4D", "#BFBFBF"],  # Tonos de gris para diferenciar
-    edgecolor="black",
-    linewidth=0.5
-)
-
-# Modificar el título y etiquetas
-plt.title("Distribución de fallas por tipo de instalación", fontsize=12, fontweight="bold")
-plt.xlabel("Tipo de instalación", fontsize=10)
-plt.ylabel("Proporción", fontsize=10)
-plt.ylim(0, 1)  # El eje Y va de 0 a 1 porque representa proporciones
-
-# Agregar etiquetas de porcentaje sobre las barras
-for container in ax.containers:
-    ax.bar_label(container, fmt='%.2f', label_type='center', fontsize=9, color="white")
-
-# Modificar la leyenda
-handles, labels = ax.get_legend_handles_labels()
-ax.legend(handles, ["Sin falla", "Falla"], title="Estado del Transformador")
-
-# Añadir cuadrícula
-ax.grid(True, linestyle=':', linewidth=0.5, alpha=0.7)
-
-plt.tight_layout()
-plt.show()
 
 
 

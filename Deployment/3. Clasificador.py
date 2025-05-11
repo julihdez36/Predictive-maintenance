@@ -195,26 +195,6 @@ def evaluar_modelo_con_pca(model, pca, scaler, X_test, y_test, best_threshold):
     return y_pred
 
 
-# def evaluar_modelo_con_pca(model, pca, scaler, X_test, y_test, best_threshold, nombre_modelo):
-#     X_test_scaled = scaler.transform(X_test)
-#     X_test_reducido = pca.transform(X_test_scaled)
-#     y_pred_prob = model.predict(X_test_reducido).ravel()
-#     y_pred = (y_pred_prob >= best_threshold).astype(int)
-    
-#     auc_pr = average_precision_score(y_test, y_pred_prob)
-#     precision = precision_score(y_test, y_pred)
-#     recall = recall_score(y_test, y_pred)
-#     f1 = f1_score(y_test, y_pred)
-    
-#     print(f"AUC-PR ({nombre_modelo}): {auc_pr:.4f}")
-#     print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-score: {f1:.4f}")
-#     print(classification_report(y_test, y_pred))
-    
-#     return {
-#         "Etiquetas reales": y_test,
-#         "Probabilidades": y_pred
-#     }
-
 # 9. (Opcional) Función para Graficar la Matriz de Confusión
 def plot_confusion_matrix(y_true, y_pred, classes, title='Matriz de Confusión', cmap=plt.cm.Blues):
     cm = confusion_matrix(y_true, y_pred)
