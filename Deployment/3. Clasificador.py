@@ -77,7 +77,7 @@ class OneCycleLR(tf.keras.callbacks.Callback):
         print(f"\nEpoch {epoch+1}: OneCycleLR setting learning rate to {lr:.6f}")
 
 # 5. Función de Pérdida Focal
-def focal_loss(alpha=0.95, gamma=5):
+def focal_loss(alpha=0.95, gamma=5): #.95
     def loss(y_true, y_pred):
         y_true = K.cast(y_true, K.floatx())
         epsilon = K.epsilon()
@@ -119,7 +119,7 @@ def create_model(best_config, input_dim):
     optimizer = optimizers.get(best_config['optimizer'].lower(), Adam(learning_rate=lr))
     model.compile(
         optimizer=optimizer,
-        loss=focal_loss(alpha= 0.95, gamma= 5),
+        loss=focal_loss(alpha= 0.95, gamma= 5), #.95
         metrics=[tf.keras.metrics.AUC(name='auc_pr', curve='PR')]
     )
     return model
