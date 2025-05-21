@@ -37,6 +37,7 @@ X_train_reducido = pca.fit_transform(X_train_scaled)
 X_test_reducido = pca.transform(X_test_scaled)
 
 # 3. Definir y entrenar el clasificador RUSBoost
+
 # Se utiliza un árbol de decisión "stump" (max_depth=1) como clasificador débil
 rusboost = RUSBoostClassifier(
     estimator=DecisionTreeClassifier(max_depth=1),

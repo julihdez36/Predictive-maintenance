@@ -207,6 +207,7 @@ def plot_confusion_matrix(y_true, y_pred, classes, title='Matriz de Confusión',
     plt.savefig("confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.show()
     
+    
 best_config = {
     "activation_1": "tanh",
     "batch_size": 32,
@@ -222,6 +223,7 @@ best_config = {
     "units_2": 225,
     "units_3": 27
   }
+
 
 # 10. Ejecución Principal
 if __name__ == "__main__":
