@@ -1,6 +1,4 @@
-# Data-Driven Predictive Maintenance for Electrical Distribution Transformers Using Neural Networks: Bayesian Optimization and Hyperband
-
-## Bayesian Optimization (BOHB) for Predictive Maintenance
+# Data-driven predictive maintenance of distribution transformers: class imbalance and Bayesian optimization
 
 The repository is organized as follows:
 
