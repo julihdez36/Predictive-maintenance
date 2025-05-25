@@ -6,7 +6,6 @@ The repository is organized as follows:
 
 1. **Data:** Contains the working dataset [Dataset of Distribution Transformers](https://data.mendeley.com/datasets/yzyj46xpmy/4)
 2. **Deployment:** Contains BOHB training using [SMAC3](https://github.com/automl/SMAC3) package. Also contains training variations.
-4. The folders **modelos_soporte** and **modelos** contain the results of different optimized hyperparameter configurations. Of particular interest are those models trained with PCA and autoencoder
 
 ## Abstract
 
