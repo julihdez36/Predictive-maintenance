@@ -7,12 +7,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
-raw19 = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/Dataset_Year_2019.csv'
-df19 = pd.read_csv(raw19)
 
-raw20 = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/Dataset_Year_2020.csv'
-df20 = pd.read_csv(raw20)
+raw19 = 'https://github.com/julihdez36/Predictive-maintenance/raw/refs/heads/main/Data/Dataset_Year_2019.xlsx'
+df19 = pd.read_excel(raw19)
 
+raw20 = 'https://github.com/julihdez36/Predictive-maintenance/raw/refs/heads/main/Data/Dataset_Year_2020.xlsx'
+df20 = pd.read_excel(raw20)
+
+df20.columns
 
 new_names = ['location', 'power', 'self_protection', 
  'avg_earth_ddt', 'max_earth_ddt', 
@@ -22,6 +24,7 @@ new_names = ['location', 'power', 'self_protection',
  'installation_type', 'air_network', 
  'circuit_queue', 'network_km_lt', 
  'burned_transformers']
+
 
 df19.columns, df20.columns = new_names, new_names
 
@@ -36,11 +39,13 @@ df.sample(3)
 
 df.isna().sum()
 
-#################################################################
-# Conjunto de datos concatenado
-##################################################################
+df.client_type.value_counts(normalize = True)
 
-#df.to_csv('Data\df.csv', index=False)  # Guarda el DataFrame en un archivo CSV, sin incluir el índice
+
+sns.countplot(data = df, x = 'client_type', hue = 'burned_transformers', 
+              stat = 'percent', alpha = .5)
+plt.xticks(rotation = 45)
+plt.show()
 
 
 ###################################################################
@@ -48,22 +53,24 @@ df.isna().sum()
 ###################################################################
 
 
-df.columns
-df.burning_rate.value_counts()
+# df.columns
+# df.burning_rate.value_counts()
 
-df['failed'] = (df['burned_transformers'] + df['burning_rate']) > 0
-df['failed'] = df['failed'].astype(int)
-df.failed.value_counts()
+# df['failed'] = (df['burned_transformers'] + df['burning_rate']) > 0
+# df['failed'] = df['failed'].astype(int)
+# df.failed.value_counts()
 
-df.burned_transformers.value_counts()
+# df.burned_transformers.value_counts()
 
-df.failed.value_counts()[0] / df.failed.value_counts()[1] # 2.4855072463768115
+# df.failed.value_counts()[0] / df.failed.value_counts()[1] # 2.4855072463768115
 
-df_quemas = df.drop(columns=['eens_kwh','year','failed'])
-df_quemas.columns
+# df_quemas = df.drop(columns=['eens_kwh','year','failed'])
+# df_quemas.columns
 
-df_entrenamiento_final = df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
-df_entrenamiento_final.columns
+# df_entrenamiento_final = df.drop(columns=['burned_transformers','eens_kwh','year','burning_rate'])
+# df_entrenamiento_final.columns
+
+
 
 ########################################################################
 # Usuarios
@@ -72,134 +79,84 @@ df_entrenamiento_final.columns
 # Separaremos usuarios en: hogares, comercios, industria y oficial
 
 
-df_entrenamiento_final['client_type'] = df_entrenamiento_final['client_type'].apply(
-    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
+df['client_type'] = df['client_type'].apply(
+    lambda x: 'HOUSEHOLD' if 'ESTRATO' in x else x
 )
 
-df_entrenamiento_final ['client_type'].value_counts()
+df['client_type'].value_counts()
+
+
+sns.countplot(data = df, x = 'client_type', hue = 'burned_transformers');
+df.columns
 
 # One-hot encoding 
-df_entrenamiento_final = pd.get_dummies(df_entrenamiento_final, columns=['client_type'])
+df = pd.get_dummies(df, columns=['client_type'])
 
 
-# Solo con quemas
-
-
-df_quemas['client_type'] = df_quemas['client_type'].apply(
-    lambda x: 'HOUSEHOLD' if 'STRATUM' in x else x
-)
-
-df_quemas['client_type'].value_counts()
-
-# One-hot encoding 
-df_quemas = pd.get_dummies(df_quemas, columns=['client_type'])
-
-df_quemas.client_type_OFFICIAL.sum() # 132
-df_quemas.client_type_INDUSTRIAL.sum() # 238
-df_quemas.client_type_COMMERCIAL.sum() #676
-df_quemas.client_type_HOUSEHOLD.sum() #30700
 
 ########################################################################
 # Tipo de instalación
 ########################################################################
 
+df.columns
 
-df_entrenamiento_final.installation_type.value_counts()
+# Mapeo de tipos de instalación a inglés
+installation_map = {
+    'MACRO SIN RED ANTIFRAUDE': 'MACRO OPEN',
+    'POSTE': 'POLE-MOUNTED',
+    'POSTE RED ANTIFRAUDE': 'POLE WITH ANTI-FRAUD NETWORK',
+    'EN H': 'H-FRAME',
+    'PAD MOUNTED': 'PAD-MOUNTED',
+    'TORRE METALICA': 'METAL TOWER',
+    'OTROS': 'OTHERS',
+    'CABINA': 'CABINET'
+}
 
-df_entrenamiento_final['installation_type'] = df_entrenamiento_final['installation_type'].replace({
-    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
-})
+# Aplicar el mapeo al DataFrame
+df['installation_type_en'] = df['installation_type'].map(installation_map)
 
-df_entrenamiento_final['installation_type'] = df_entrenamiento_final['installation_type'].replace({
-        'POLE': 1, # EXPOSED
-        'POLE WITH ANTI-FRAUD NET': 1,
-        'TORRE METALICA': 1,
-        'EN H': 1,
-        'CABINA': 0, # PROTECTED
-        'PAD MOUNTED': 0, 
-        'MACRO WITHOUT ANTI-FRAUD NET': 0,
-        'OTROS': 0})
-        
-       
-df_entrenamiento_final['installation_type'].value_counts() # 1:28306, 0:3440
-df_entrenamiento_final['failed'].value_counts() # 0:22638, 1:9108
+# Calcular porcentaje de quemas por tipo de instalación
+burn_rate = df.groupby('installation_type_en')['burned_transformers'].mean() * 100
+burn_rate = burn_rate.sort_values(ascending=True)
 
-df_entrenamiento_final.groupby('installation_type')['failed'].sum()
+# Crear gráfico de barras horizontales
+plt.figure(figsize=(10,6))
+sns.barplot(x=burn_rate.values, y=burn_rate.index, palette='viridis')
 
-# Con quemas ####
+# Etiquetas y título en inglés
+plt.xlabel('Percentage of Burned Transformers (%)', fontsize=12)
+plt.ylabel('Installation Type', fontsize=12)
+# plt.title('Percentage of Burned Transformers by Installation Type', fontsize=14, fontweight='bold')
+plt.xlim((0,38))
 
-df_quemas.installation_type.value_counts()
-
-df_quemas['installation_type'] = df_quemas['installation_type'].replace({
-    'POLE WITH ANTI-FRAU NET': 'POLE WITH ANTI-FRAUD NET'
-})
-
-df_quemas['installation_type'] = df_quemas['installation_type'].replace({
-        'POLE': 1, # EXPOSED
-        'POLE WITH ANTI-FRAUD NET': 1,
-        'TORRE METALICA': 1,
-        'EN H': 1,
-        'CABINA': 0, # PROTECTED
-        'PAD MOUNTED': 0, 
-        'MACRO WITHOUT ANTI-FRAUD NET': 0,
-        'OTROS': 0})
-        
-       
-df_quemas['installation_type'].value_counts() # 1:28306, 0:3440
-
-df_quemas.columns
-
-df_quemas['burned_transformers'].value_counts() # 0:30310, 1:1436
-
-df_quemas.groupby('installation_type')['burned_transformers'].sum()
+# Añadir valores sobre las barras
+for i, v in enumerate(burn_rate.values):
+    plt.text(v + 0.5, i, f"{v:.1f}%", va='center', fontsize=10)
+plt.grid(linestyle = '--', alpha = .8)
+plt.tight_layout()
+plt.show()
 
 
-########################################################################
-# Tipado de variables
-########################################################################
-
-
-df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(str).str.replace(',', '', regex=True)
-df_entrenamiento_final['network_km_lt'] = df_entrenamiento_final['network_km_lt'].astype(float)
-
-df_entrenamiento_final.isna().sum()
-df_entrenamiento_final.info()
-
-
-# Con quemas
-
-df_quemas['network_km_lt'] = df_quemas['network_km_lt'].astype(str).str.replace(',', '', regex=True)
-df_quemas['network_km_lt'] = df_quemas['network_km_lt'].astype(float)
-
-df_quemas.isna().sum()
-df_quemas.info()
+df.installation_type.value_counts()
 
 
 
+df['installation_type'] = df['installation_type'].replace({
+    'MACRO SIN RED ANTIFRAUDE': 0, 'POSTE': 1, 'POSTE RED ANTIFRAUDE': 1,
+    'EN H': 1, 'PAD MOUNTED': 0, 'TORRE METALICA': 1, 'OTROS': 0, 'CABINA': 0})
 
 
+df['installation_type'].value_counts() # 1:28306, 0:3440
 
+df = df.drop('installation_type_en', axis = 'columns')
 
-df_entrenamiento_final['failed'].value_counts()
-# 0    22638
-# 1     9108
-
-df_quemas['burned_transformers'].value_counts() 
-
-# 0:30310
-# 1:1436
-
-
-df_entrenamiento_final.shape
-df_quemas.shape
-
+df.columns
 ########################################################################
 # Guardado de datos
 ########################################################################
 
-df_entrenamiento_final.to_csv('Data\df_entrenamiento_final.csv', index=False)
+df.to_csv('Data\df_entrenamiento_final.csv', index=False)
   
-df_quemas.to_csv('Data\df_quemas.csv', index=False)
 
 
 
