@@ -136,7 +136,7 @@ calibrated_model.fit(x_train_scaled, y_train19)
 # Predicciones finales
 y_pred = calibrated_model.predict(x_test_scaled)
 
-# 3️⃣ Graficar TOP 15 características
+#  Graficar TOP 15 características
 top_n = 18
 feature_importance.head(top_n).plot(kind='bar', figsize=(10, 5))
 plt.title('Importancia de variables según LinearSVC')
@@ -148,30 +148,30 @@ plt.show()
 
 # Rescatando el signo ########################
 
-# 1️⃣ Escalar datos
+# Escalar datos
 scaler = StandardScaler()
 x_train_scaled = scaler.fit_transform(X_train19)
 x_test_scaled = scaler.transform(x_test)
 
-# 2️⃣ Entrenar LinearSVC para extraer coeficientes
+# Entrenar LinearSVC para extraer coeficientes
 linear_model = LinearSVC(C=3, random_state=42)
 linear_model.fit(x_train_scaled, y_train19)
 
-# 3️⃣ Extraer coeficientes con signo
+# Extraer coeficientes con signo
 coef_with_sign = pd.Series(linear_model.coef_[0], index=X_train19.columns)
 
 # Crear columna con magnitud absoluta
 feature_importance = coef_with_sign.abs().sort_values(ascending=False)
 
-# 4️⃣ Seleccionar top N características
+# Seleccionar top N características
 top_n = 18
 top_features = feature_importance.head(top_n).index
 top_coef_with_sign = coef_with_sign[top_features]
 
-# 5️⃣ Asignar color: rojo si impulsa hacia fallo (coef > 0), azul si impulsa hacia no fallo (coef < 0)
+# Asignar color: rojo si impulsa hacia fallo (coef > 0), azul si impulsa hacia no fallo (coef < 0)
 colors = ['red' if w > 0 else 'blue' for w in top_coef_with_sign]
 
-# 6️⃣ Graficar
+# Graficar
 plt.figure(figsize=(10, 5))
 top_coef_with_sign.sort_values(ascending=False).plot(kind='bar', color=colors)
 
@@ -187,7 +187,7 @@ plt.text(0.5, min(top_coef_with_sign)*0.9, 'Azul = reduce prob. de falla', color
 plt.tight_layout()
 plt.show()
 
-# 7️⃣ Calibrar modelo (para uso final)
+# Calibrar modelo (para uso final)
 calibrated_model = CalibratedClassifierCV(linear_model, method='sigmoid', cv=5)
 calibrated_model.fit(x_train_scaled, y_train19)
 
