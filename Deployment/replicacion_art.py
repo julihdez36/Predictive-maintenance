@@ -16,11 +16,16 @@ from sklearn.svm import LinearSVC
 from sklearn.calibration import CalibratedClassifierCV
 
 
-os.listdir()
+# os.listdir()
 
-df = pd.read_csv('Data\df_entrenamiento_final.csv')
+# df = pd.read_csv('Data\df_entrenamiento_final.csv')
+
+url = 'https://raw.githubusercontent.com/julihdez36/Predictive-maintenance/refs/heads/main/Data/df_entrenamiento_final.csv'
+
+df = pd.read_csv(url)
 
 df.columns
+
 
 
 """
@@ -31,6 +36,10 @@ Divide el dataset en entrenamiento y validación siguiendo la lógica del
      - Todos los positivos (quemados) en entrenamiento
      - Una muestra de negativos (buenos) para completar n_train_total
 """
+
+sns.countplot(data = entrenamiento19, x = 'burned_transformers', 
+              hue = 'burned_transformers');
+
 
 entrenamiento19 = df[df['year'] == 2019]
 burned19 = entrenamiento19[entrenamiento19['burned_transformers']== 1]
@@ -60,7 +69,7 @@ X_train20 = train20.drop(columns = ['burned_transformers', 'year','eens_kwh'])
 
 # Entrenamos con 2019 submuestreada y testeamos con 2020 submuestreada
 
-linear_model = LinearSVC(C=3, random_state=42) 
+linear_model = LinearSVC(C=3, random_state=42) #Especificamos el modelo
 model = CalibratedClassifierCV(linear_model, method='sigmoid', cv=5)
 model.fit(X_train19, y_train19)
 
@@ -118,7 +127,7 @@ scaler = StandardScaler()
 x_train_scaled = scaler.fit_transform(X_train19)
 x_test_scaled = scaler.transform(x_test)
 
-# 1️⃣ Entrenar LinearSVC directo (solo para coeficientes)
+# Entrenar LinearSVC directo (solo para coeficientes)
 linear_model = LinearSVC(C=3, random_state=42)
 linear_model.fit(x_train_scaled, y_train19)
 
@@ -129,7 +138,7 @@ importances = linear_model.coef_[0]
 feature_importance = pd.Series(importances, index=X_train19.columns)
 feature_importance = feature_importance.abs().sort_values(ascending=False)
 
-# 2️⃣ Calibrar el modelo (para predicción final si quieres)
+# Calibrar el modelo (para predicción final si quieres)
 calibrated_model = CalibratedClassifierCV(linear_model, method='sigmoid', cv=5)
 calibrated_model.fit(x_train_scaled, y_train19)
 
